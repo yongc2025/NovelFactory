@@ -35,4 +35,6 @@ Thumbs.db
 # Project specific
 output/
 data/
+node_modules/
 *.log
+.history/

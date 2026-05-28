@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import {computed, h} from 'vue'
 import { Card, Progress, Table, Tag, List, Empty, Spin, Descriptions } from 'ant-design-vue'
 import type { ReviewReport as ReviewReportType, ReviewIssue } from '@/types'
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, h, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button, Table, Tag, Space, Typography } from 'ant-design-vue'
 import { PlusOutlined, EyeOutlined, PlayCircleOutlined } from '@ant-design/icons-vue'
@@ -81,7 +81,7 @@ function goToCreate() {
       <div class="dashboard-header">
         <div>
           <Title :level="3" style="margin: 0">👋 欢迎来到 NovelFactory</Title>
-          <Text type="secondary">AI 驱动的小说创作工坊</Text>
+          <Text type="secondary">AI 驱动的小说创作工厂</Text>
         </div>
         <Button type="primary" size="large" @click="goToCreate">
           <PlusOutlined /> 新建项目
