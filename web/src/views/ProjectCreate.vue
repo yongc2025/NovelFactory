@@ -36,15 +36,16 @@ const form = reactive<CreateProjectParams>({
   generation_strategy: undefined,
 })
 
-// 题材选项
+// 题材选项（与后端 GENRE_MATRIX 保持一致）
 const genreOptions = [
-  { label: '玄幻', value: '玄幻', children: ['东方玄幻', '异界大陆', '高武世界', '远古神话'] },
-  { label: '仙侠', value: '仙侠', children: ['修真文明', '洪荒封神', '古典仙侠', '幻想修仙'] },
-  { label: '都市', value: '都市', children: ['都市生活', '都市异能', '商战职场', '青春校园'] },
-  { label: '科幻', value: '科幻', children: ['星际文明', '时空穿梭', '未来世界', '超级科技'] },
-  { label: '历史', value: '历史', children: ['架空历史', '秦汉三国', '唐宋元明', '清史民国'] },
-  { label: '游戏', value: '游戏', children: ['虚拟网游', '游戏系统', '游戏异界', '电子竞技'] },
-  { label: '悬疑', value: '悬疑', children: ['推理侦探', '恐怖惊悚', '悬疑探险', '诡秘悬疑'] },
+  { label: '古言', value: '古言', children: ['重生复仇', '宅斗权谋', '甜宠宫斗', '穿书逆袭', '种田经商', '古言仙侠'] },
+  { label: '现代', value: '现代', children: ['总裁豪门', '娱乐圈', '职场逆袭', '都市情感', '悬疑推理', '医疗/法律'] },
+  { label: '玄幻', value: '玄幻', children: ['系统流', '重生修仙', '异世大陆', '灵异悬疑', '末日生存', '魔法工业', '理工科穿越', '种田基建'] },
+  { label: '科幻', value: '科幻', children: ['星际', '赛博朋克', '时间循环', '末日废土', '硬科幻', '科技种田'] },
+  { label: '年代', value: '年代', children: ['70-80年代', '90年代经商', '年代重生'] },
+  { label: '都市', value: '都市', children: ['校园', '职场', '家庭伦理', '情感婚姻', '学霸/科研'] },
+  { label: '男频', value: '男频', children: ['玄幻修仙', '都市异能', '游戏竞技', '科幻机甲', '历史架空', '末日求生'] },
+  { label: '其他', value: '其他', children: ['自定义'] },
 ]
 
 const currentSubGenres = computed(() => {
