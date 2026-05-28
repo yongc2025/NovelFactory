@@ -132,6 +132,13 @@ class ProjectStore:
             index[project_id]["status"] = status
             self._save_index(index)
 
+    def save_params(self, project_id: str, params_data: dict):
+        """保存项目创建参数"""
+        self._write_json(self.data_dir / project_id / "params.json", params_data)
+
+    def get_params(self, project_id: str) -> dict | None:
+        return self._read_json_safe(self.data_dir / project_id / "params.json")
+
     def save_topic(self, project_id: str, topic_data: dict):
         """保存选题结果"""
         self._write_json(self.data_dir / project_id / "topic.json", topic_data)

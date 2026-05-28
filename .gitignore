@@ -35,6 +35,10 @@ Thumbs.db
 # Project specific
 output/
 data/
-node_modules/
+web/node_modules
 *.log
 .history/
+
+# AI tools
+.codex
+.github
