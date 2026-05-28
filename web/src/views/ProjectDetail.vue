@@ -150,6 +150,58 @@ async function handleStageConfirm(action: ConfirmAction, feedback?: string) {
   }
 }
 
+// 选题更新
+function onTopicUpdate(data: any) {
+  store.topicPlans = store.topicPlans.map((t) =>
+    t.id === data.id ? { ...t, ...data } : t
+  )
+}
+
+// 世界观更新
+function onWorldUpdate(data: any) {
+  store.worldSetting = { ...store.worldSetting, ...data }
+}
+
+// 角色更新
+function onCharacterUpdate(data: any) {
+  store.characters = store.characters.map((c) =>
+    c.id === data.id ? { ...c, ...data } : c
+  )
+}
+
+// 角色删除
+async function onCharacterDelete(id: string) {
+  try {
+    const { updateCharacters } = await import('@/api')
+    const remaining = store.characters.filter((c) => c.id !== id)
+    await updateCharacters(projectId.value, remaining)
+    store.characters = remaining
+    message.success('角色已删除')
+  } catch {
+    message.error('删除失败')
+  }
+}
+
+// 大纲更新
+function onOutlineUpdate(data: any) {
+  store.outline = { ...store.outline, ...data }
+}
+
+// 章节更新
+function onChapterUpdate(data: any) {
+  store.currentChapter = { ...store.currentChapter, ...data }
+}
+
+// 阶段确认（统一处理）
+async function handleStageConfirmByStage(stage: string) {
+  try {
+    await store.confirmStageAction(projectId.value, stage)
+    message.success('已确认')
+  } catch {
+    message.error('确认失败')
+  }
+}
+
 // 元数据更新
 async function onMetadataUpdate(data: Partial<BookMetadata>) {
   try {
@@ -249,7 +301,9 @@ function onMetadataConfirm() {
                 v-for="topic in store.topicPlans"
                 :key="topic.id"
                 :topic="topic"
+                :project-id="projectId"
                 @select="handleStageConfirm('approve')"
+                @update="onTopicUpdate"
               />
               <StageConfirm
                 v-if="store.topicPlans.length > 0"
@@ -262,7 +316,13 @@ function onMetadataConfirm() {
             <!-- 世界观 -->
             <template v-if="activeTab === 'world'">
               <Title :level="4">🌍 世界观设定</Title>
-              <WorldPanel :world="store.worldSetting" :loading="store.loading" />
+              <WorldPanel
+                :world="store.worldSetting"
+                :loading="store.loading"
+                :project-id="projectId"
+                @update="onWorldUpdate"
+                @confirm="handleStageConfirmByStage('world')"
+              />
               <StageConfirm
                 v-if="store.worldSetting"
                 stage-name="世界观"
@@ -278,6 +338,9 @@ function onMetadataConfirm() {
                 v-for="char in store.characters"
                 :key="char.id"
                 :character="char"
+                :project-id="projectId"
+                @update="onCharacterUpdate"
+                @delete="onCharacterDelete"
               />
               <StageConfirm
                 v-if="store.characters.length > 0"
@@ -290,7 +353,13 @@ function onMetadataConfirm() {
             <!-- 大纲 -->
             <template v-if="activeTab === 'outline'">
               <Title :level="4">📋 大纲编辑</Title>
-              <OutlineEditor :outline="store.outline" :loading="store.loading" />
+              <OutlineEditor
+                :outline="store.outline"
+                :loading="store.loading"
+                :project-id="projectId"
+                @update="onOutlineUpdate"
+                @confirm="handleStageConfirmByStage('outline')"
+              />
               <StageConfirm
                 v-if="store.outline"
                 stage-name="大纲"
@@ -318,8 +387,10 @@ function onMetadataConfirm() {
                 :chapter="store.currentChapter"
                 :loading="store.loading"
                 :total-chapters="store.outline?.total_chapters"
+                :project-id="projectId"
                 @prev="prevChapter"
                 @next="nextChapter"
+                @update="onChapterUpdate"
               />
             </template>
 

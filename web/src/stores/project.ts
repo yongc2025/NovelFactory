@@ -234,6 +234,83 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  async function updateTopicData(projectId: string, data: any) {
+    loading.value = true
+    try {
+      await api.updateTopic(projectId, data)
+      topicPlans.value = data
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateWorldData(projectId: string, data: any) {
+    loading.value = true
+    try {
+      await api.updateWorld(projectId, data)
+      worldSetting.value = data
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateCharactersData(projectId: string, data: any) {
+    loading.value = true
+    try {
+      await api.updateCharacters(projectId, data)
+      characters.value = data
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateOutlineData(projectId: string, data: any) {
+    loading.value = true
+    try {
+      await api.updateOutline(projectId, data)
+      outline.value = data
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateChapterDraft(projectId: string, chapterNum: number, draft: string) {
+    loading.value = true
+    try {
+      await api.updateChapterDraft(projectId, chapterNum, draft)
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function confirmStageAction(projectId: string, stage: string) {
+    loading.value = true
+    try {
+      await api.confirmStageAction(projectId, stage)
+      await fetchPipelineStatus(projectId)
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearCurrent() {
     currentProject.value = null
     pipelineStatus.value = null
@@ -280,6 +357,12 @@ export const useProjectStore = defineStore('project', () => {
     fetchMetadata,
     updateMetadata,
     regenerateMetadata,
+    updateTopicData,
+    updateWorldData,
+    updateCharactersData,
+    updateOutlineData,
+    updateChapterDraft,
+    confirmStageAction,
     clearCurrent,
   }
 })

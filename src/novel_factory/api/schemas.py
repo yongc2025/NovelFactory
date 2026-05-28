@@ -253,3 +253,28 @@ class ConfigUpdateRequest(BaseModel):
     """配置更新请求"""
     default_provider: str | None = None
     # 可扩展其他配置项
+
+
+# ── 阶段状态追踪 ─────────────────────────────────────────────
+
+class StageInfo(BaseModel):
+    """单个阶段的状态信息"""
+    status: str = Field("pending", description="阶段状态: pending/generated/editing/saved/confirmed")
+    updated_at: str | None = Field(None, description="最后更新时间")
+
+
+class StagesResponse(BaseModel):
+    """阶段状态追踪响应"""
+    topic: StageInfo = Field(default_factory=StageInfo)
+    world: StageInfo = Field(default_factory=StageInfo)
+    character: StageInfo = Field(default_factory=StageInfo)
+    outline: StageInfo = Field(default_factory=StageInfo)
+    metadata: StageInfo = Field(default_factory=StageInfo)
+    scene: StageInfo = Field(default_factory=StageInfo)
+    draft: StageInfo = Field(default_factory=StageInfo)
+    review: StageInfo = Field(default_factory=StageInfo)
+
+
+class StageConfirmRequest(BaseModel):
+    """阶段确认请求"""
+    status: str = Field("confirmed", description="确认后的状态，默认 confirmed")

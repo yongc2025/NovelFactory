@@ -127,4 +127,41 @@ export function regenerateMetadata(projectId: string) {
   return http.post<ApiResponse<BookMetadata>>(`/projects/${projectId}/metadata/regenerate`)
 }
 
+// ========== 二次编辑 API ==========
+
+/** 更新选题 */
+export function updateTopic(projectId: string, data: any) {
+  return http.put<ApiResponse<any>>(`/projects/${projectId}/topic`, data)
+}
+
+/** 更新世界观 */
+export function updateWorld(projectId: string, data: any) {
+  return http.put<ApiResponse<any>>(`/projects/${projectId}/world`, data)
+}
+
+/** 更新角色 */
+export function updateCharacters(projectId: string, data: any) {
+  return http.put<ApiResponse<any>>(`/projects/${projectId}/characters`, data)
+}
+
+/** 更新大纲 */
+export function updateOutline(projectId: string, data: any) {
+  return http.put<ApiResponse<any>>(`/projects/${projectId}/outline`, data)
+}
+
+/** 更新章节正文 */
+export function updateChapterDraft(projectId: string, chapterNum: number, draft: string) {
+  return http.put<ApiResponse<any>>(`/projects/${projectId}/chapters/${chapterNum}`, { content: draft })
+}
+
+/** 确认阶段 */
+export function confirmStageAction(projectId: string, stage: string) {
+  return http.post<ApiResponse<void>>(`/projects/${projectId}/pipeline/stages/${stage}/confirm`)
+}
+
+/** 获取阶段状态 */
+export function getStages(projectId: string) {
+  return http.get<ApiResponse<any>>(`/projects/${projectId}/pipeline/stages`)
+}
+
 export default http

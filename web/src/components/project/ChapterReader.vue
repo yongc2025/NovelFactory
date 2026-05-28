@@ -1,10 +1,23 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Card, Tag, Typography, Empty, Spin, Space, Button } from 'ant-design-vue'
+import { ref, computed } from 'vue'
+import {
+  Card,
+  Tag,
+  Typography,
+  Empty,
+  Spin,
+  Space,
+  Button,
+  Input,
+  message,
+} from 'ant-design-vue'
 import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
   FileTextOutlined,
+  EditOutlined,
+  SaveOutlined,
+  CloseOutlined,
 } from '@ant-design/icons-vue'
 import type { Chapter } from '@/types'
 
@@ -14,12 +27,17 @@ const props = defineProps<{
   chapter: Chapter | null
   loading?: boolean
   totalChapters?: number
+  projectId: string
 }>()
 
 const emit = defineEmits<{
   prev: []
   next: []
+  update: [data: Chapter]
 }>()
+
+const editing = ref(false)
+const editContent = ref('')
 
 const canPrev = computed(() => props.chapter && props.chapter.chapter_number > 1)
 const canNext = computed(
@@ -30,7 +48,7 @@ const canNext = computed(
 )
 
 const statusLabel = computed(() => {
-  if (!props.chapter) return ''
+  if (!props.chapter) return { text: '', color: 'default' }
   const map: Record<string, { text: string; color: string }> = {
     draft: { text: '草稿', color: 'default' },
     reviewed: { text: '已审校', color: 'blue' },
@@ -43,6 +61,41 @@ const formattedContent = computed(() => {
   if (!props.chapter) return ''
   return props.chapter.content.split('\n').filter(Boolean)
 })
+
+const wordCount = computed(() => {
+  if (editing.value) {
+    return editContent.value.replace(/\s/g, '').length
+  }
+  return props.chapter?.word_count ?? 0
+})
+
+function startEdit() {
+  editContent.value = props.chapter?.content ?? ''
+  editing.value = true
+}
+
+function cancelEdit() {
+  editing.value = false
+  editContent.value = ''
+}
+
+async function saveEdit() {
+  if (!props.chapter) return
+  try {
+    const { updateChapterDraft } = await import('@/api')
+    await updateChapterDraft(props.projectId, props.chapter.chapter_number, editContent.value)
+    emit('update', {
+      ...props.chapter,
+      content: editContent.value,
+      word_count: editContent.value.replace(/\s/g, '').length,
+    })
+    editing.value = false
+    editContent.value = ''
+    message.success('正文已保存')
+  } catch {
+    message.error('保存失败')
+  }
+}
 </script>
 
 <template>
@@ -59,15 +112,41 @@ const formattedContent = computed(() => {
                 <Tag :color="statusLabel.color">{{ statusLabel.text }}</Tag>
               </div>
               <div class="chapter-stats">
-                <Tag color="purple">{{ chapter.word_count }} 字</Tag>
+                <Tag color="purple">{{ wordCount }} 字</Tag>
+                <template v-if="!editing">
+                  <Button size="small" @click="startEdit">
+                    <EditOutlined /> 编辑
+                  </Button>
+                </template>
+                <template v-else>
+                  <Space>
+                    <Button size="small" type="primary" @click="saveEdit">
+                      <SaveOutlined /> 保存
+                    </Button>
+                    <Button size="small" @click="cancelEdit">
+                      <CloseOutlined /> 取消
+                    </Button>
+                  </Space>
+                </template>
               </div>
             </div>
           </template>
 
-          <div class="chapter-content">
+          <!-- 查看模式 -->
+          <div v-if="!editing" class="chapter-content">
             <p v-for="(para, i) in formattedContent" :key="i" class="content-para">
               {{ para }}
             </p>
+          </div>
+
+          <!-- 编辑模式 -->
+          <div v-else class="chapter-edit">
+            <Input.TextArea
+              v-model:value="editContent"
+              :rows="20"
+              placeholder="输入正文内容..."
+              class="content-textarea"
+            />
           </div>
 
           <template #actions>
@@ -108,6 +187,12 @@ const formattedContent = computed(() => {
   font-size: 16px;
 }
 
+.chapter-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .chapter-content {
   line-height: 2;
   font-size: 16px;
@@ -116,6 +201,16 @@ const formattedContent = computed(() => {
 .content-para {
   text-indent: 2em;
   margin-bottom: 0;
+}
+
+.chapter-edit {
+  margin-top: 8px;
+}
+
+.content-textarea {
+  font-size: 15px;
+  line-height: 1.8;
+  font-family: 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
 .chapter-nav {

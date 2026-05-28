@@ -32,6 +32,8 @@ from novel_factory.api.schemas import (
     ProjectListItem,
     ProjectResponse,
     ReviewResponse,
+    StageConfirmRequest,
+    StagesResponse,
     TopicResponse,
     WorldSettingResponse,
 )
@@ -54,6 +56,31 @@ STAGES = [
 
 # project_id -> PipelineStatus 数据
 _pipeline_states: dict[str, dict[str, Any]] = {}
+
+# ── 阶段状态追踪（进程内） ─────────────────────────────────
+# project_id -> {stage_name: StageInfo}
+_stage_states: dict[str, dict[str, dict[str, Any]]] = {}
+
+# 所有阶段列表（与流水线一致）
+_ALL_STAGES = ["topic", "world", "character", "outline", "metadata", "scene", "draft", "review"]
+
+
+def _get_stage_states(project_id: str) -> dict[str, dict[str, Any]]:
+    """获取或初始化项目的阶段状态"""
+    if project_id not in _stage_states:
+        _stage_states[project_id] = {
+            stage: {"status": "pending", "updated_at": None}
+            for stage in _ALL_STAGES
+        }
+    return _stage_states[project_id]
+
+
+def _update_stage_state(project_id: str, stage: str, status: str) -> None:
+    """更新某个阶段的状态和时间戳"""
+    states = _get_stage_states(project_id)
+    if stage in states:
+        states[stage]["status"] = status
+        states[stage]["updated_at"] = datetime.now().isoformat()
 
 
 def _get_or_create_state(project_id: str) -> dict[str, Any]:
@@ -615,6 +642,91 @@ async def get_review(project_id: str):
     return ReviewResponse(project_id=project_id, review=review)
 
 
+# ── 二次编辑（PUT 路由） ─────────────────────────────────────
+
+@app.put("/api/projects/{project_id}/topic", response_model=TopicResponse)
+async def update_topic(project_id: str, body: dict):
+    """更新选题数据（二次编辑）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    store.save_topic(project_id, body)
+    _update_stage_state(project_id, "topic", "saved")
+    return TopicResponse(project_id=project_id, topic=body)
+
+
+@app.put("/api/projects/{project_id}/world", response_model=WorldSettingResponse)
+async def update_world(project_id: str, body: dict):
+    """更新世界观设定（二次编辑）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    store.save_world(project_id, body)
+    _update_stage_state(project_id, "world", "saved")
+    return WorldSettingResponse(project_id=project_id, world=body)
+
+
+@app.put("/api/projects/{project_id}/characters", response_model=CharacterResponse)
+async def update_characters(project_id: str, body: dict):
+    """更新角色列表（二次编辑）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    store.save_characters(project_id, body)
+    _update_stage_state(project_id, "character", "saved")
+    return CharacterResponse(project_id=project_id, characters=body)
+
+
+@app.put("/api/projects/{project_id}/outline", response_model=OutlineResponse)
+async def update_outline(project_id: str, body: dict):
+    """更新大纲（二次编辑，包含 chapters 和 foreshadows）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    store.save_outline(project_id, body)
+    _update_stage_state(project_id, "outline", "saved")
+    return OutlineResponse(project_id=project_id, outline=body)
+
+
+@app.put("/api/projects/{project_id}/chapters/{chapter_num}")
+async def update_chapter(project_id: str, chapter_num: int, body: dict):
+    """更新章节正文（二次编辑）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    draft = body.get("draft", "")
+    store.save_draft(project_id, chapter_num, draft)
+    _update_stage_state(project_id, "draft", "saved")
+    return {"project_id": project_id, "chapter_num": chapter_num, "draft": draft}
+
+
+# ── 阶段状态追踪 ─────────────────────────────────────────────
+
+@app.get("/api/projects/{project_id}/stages", response_model=StagesResponse)
+async def get_stages(project_id: str):
+    """获取项目各阶段的状态追踪"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    states = _get_stage_states(project_id)
+    return StagesResponse(**{k: v for k, v in states.items()})
+
+
+@app.post("/api/projects/{project_id}/stages/{stage}/confirm")
+async def confirm_stage(project_id: str, stage: str, body: StageConfirmRequest):
+    """确认某个阶段已完成（采用），更新状态为 confirmed"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    if stage not in _ALL_STAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"未知阶段: {stage}，可选: {', '.join(_ALL_STAGES)}"
+        )
+    _update_stage_state(project_id, stage, body.status)
+    return {"message": f"阶段 {stage} 已确认为 {body.status}", "stage": stage, "status": body.status}
+
+
 # ── 书籍元数据 ──────────────────────────────────────────────
 
 @app.get("/api/projects/{project_id}/metadata", response_model=BookMetadata)
@@ -639,7 +751,19 @@ async def update_metadata(project_id: str, body: dict):
     existing = store.get_metadata(project_id) or {}
     existing.update(body)
     store.save_metadata(project_id, existing)
+    _update_stage_state(project_id, "metadata", "saved")
     return BookMetadata(**existing)
+
+
+@app.put("/api/projects/{project_id}/metadata", response_model=BookMetadata)
+async def replace_metadata(project_id: str, body: dict):
+    """替换书籍元数据（二次编辑）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    store.save_metadata(project_id, body)
+    _update_stage_state(project_id, "metadata", "saved")
+    return BookMetadata(**body)
 
 
 @app.post("/api/projects/{project_id}/metadata/regenerate", response_model=BookMetadata)
