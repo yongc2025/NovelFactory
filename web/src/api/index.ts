@@ -12,6 +12,7 @@ import type {
   Chapter,
   ReviewReport,
   ConfirmAction,
+  BookMetadata,
 } from '@/types'
 
 const http = axios.create({
@@ -107,6 +108,23 @@ export function getChapter(id: string, num: number) {
 /** 获取审校报告 */
 export function getReview(id: string) {
   return http.get<ApiResponse<ReviewReport>>(`/projects/${id}/review`)
+}
+
+// ========== 元数据 API ==========
+
+/** 获取书籍元数据 */
+export function getMetadata(projectId: string) {
+  return http.get<ApiResponse<BookMetadata>>(`/projects/${projectId}/metadata`)
+}
+
+/** 更新书籍元数据 */
+export function updateMetadata(projectId: string, metadata: Partial<BookMetadata>) {
+  return http.put<ApiResponse<void>>(`/projects/${projectId}/metadata`, metadata)
+}
+
+/** 重新生成书籍元数据 */
+export function regenerateMetadata(projectId: string) {
+  return http.post<ApiResponse<BookMetadata>>(`/projects/${projectId}/metadata/regenerate`)
 }
 
 export default http

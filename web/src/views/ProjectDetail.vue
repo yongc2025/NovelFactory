@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from 'vue'
+import { onMounted, ref, computed, watch, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Card,
@@ -27,11 +27,12 @@ import TopicCard from '@/components/project/TopicCard.vue'
 import WorldPanel from '@/components/project/WorldPanel.vue'
 import CharacterCard from '@/components/project/CharacterCard.vue'
 import OutlineEditor from '@/components/project/OutlineEditor.vue'
+import MetadataEditor from '@/components/project/MetadataEditor.vue'
 import ChapterReader from '@/components/project/ChapterReader.vue'
 import ReviewReport from '@/components/project/ReviewReport.vue'
 import StageConfirm from '@/components/common/StageConfirm.vue'
 import { useProjectStore } from '@/stores/project'
-import type { ConfirmAction } from '@/types'
+import type { ConfirmAction, BookMetadata } from '@/types'
 
 const { Title, Text } = Typography
 
@@ -52,6 +53,7 @@ const stageNames: Record<string, string> = {
   world: '世界观',
   characters: '角色设定',
   outline: '大纲',
+  metadata: '书籍元数据',
   chapters: '正文',
   review: '审校报告',
 }
@@ -63,6 +65,7 @@ const sideMenuItems = [
   { key: 'world', icon: () => h(GlobalOutlined), label: '世界观' },
   { key: 'characters', icon: () => h(TeamOutlined), label: '角色列表' },
   { key: 'outline', icon: () => h(FileTextOutlined), label: '大纲编辑' },
+  { key: 'metadata', icon: () => h(ReadOutlined), label: '书籍元数据' },
   { key: 'chapters', icon: () => h(ReadOutlined), label: '正文阅读' },
   { key: 'review', icon: () => h(CheckCircleOutlined), label: '审校报告' },
 ]
@@ -98,6 +101,9 @@ watch(activeTab, async (tab) => {
       break
     case 'outline':
       await store.fetchOutline(id)
+      break
+    case 'metadata':
+      await store.fetchMetadata(id)
       break
     case 'chapters':
       await store.fetchChapter(id, currentChapterNum.value)
@@ -142,6 +148,31 @@ async function handleStageConfirm(action: ConfirmAction, feedback?: string) {
   } catch {
     message.error('操作失败')
   }
+}
+
+// 元数据更新
+async function onMetadataUpdate(data: Partial<BookMetadata>) {
+  try {
+    await store.updateMetadata(projectId.value, data)
+    message.success('元数据已更新')
+  } catch {
+    message.error('更新失败')
+  }
+}
+
+// 元数据重新生成
+async function onMetadataRegenerate() {
+  try {
+    await store.regenerateMetadata(projectId.value)
+    message.success('元数据已重新生成')
+  } catch {
+    message.error('重新生成失败')
+  }
+}
+
+// 元数据确认
+function onMetadataConfirm() {
+  handleStageConfirm('approve')
 }
 </script>
 
@@ -265,6 +296,18 @@ async function handleStageConfirm(action: ConfirmAction, feedback?: string) {
                 stage-name="大纲"
                 :loading="store.loading"
                 @confirm="handleStageConfirm"
+              />
+            </template>
+
+            <!-- 元数据 -->
+            <template v-if="activeTab === 'metadata'">
+              <Title :level="4">📚 书籍元数据</Title>
+              <MetadataEditor
+                :project-id="projectId"
+                :metadata="store.metadata"
+                @update="onMetadataUpdate"
+                @regenerate="onMetadataRegenerate"
+                @confirm="onMetadataConfirm"
               />
             </template>
 

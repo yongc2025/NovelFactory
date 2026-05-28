@@ -201,6 +201,14 @@ class ProjectStore:
             result.append((num, f.read_text(encoding="utf-8")))
         return result
 
+    def save_metadata(self, project_id: str, metadata: dict):
+        """保存书籍元数据"""
+        self._write_json(self.data_dir / project_id / "metadata.json", metadata)
+
+    def get_metadata(self, project_id: str) -> dict | None:
+        """获取书籍元数据"""
+        return self._read_json_safe(self.data_dir / project_id / "metadata.json")
+
     def save_review(self, project_id: str, review_data: dict):
         """保存审校报告"""
         self._write_json(self.data_dir / project_id / "review.json", review_data)

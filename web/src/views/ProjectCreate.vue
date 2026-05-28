@@ -25,7 +25,7 @@ const activeTab = ref('1')
 const submitting = ref(false)
 
 // Tab 1: 基础信息
-const form = reactive<CreateProjectParams>({
+const form = reactive<CreateProjectParams & { book_title?: string }>({
   inspiration: '',
   platform: '起点中文网',
   word_count_target: 300000,
@@ -121,7 +121,11 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const params: CreateProjectParams = {
-      ...form,
+      inspiration: form.inspiration,
+      platform: form.platform,
+      word_count_target: form.word_count_target,
+      genre: form.genre,
+      sub_genre: form.sub_genre,
       character_presets: characterPresets.value.length ? characterPresets.value : undefined,
       generation_strategy: strategyForm,
     }
@@ -156,6 +160,16 @@ async function handleSubmit() {
                   v-model:value="form.inspiration"
                   :rows="4"
                   placeholder="描述你的小说灵感，越详细越好。例如：一个现代程序员穿越到修仙世界，利用编程思维破解阵法..."
+                />
+              </Form.Item>
+
+              <!-- 书名 -->
+              <Form.Item label="书名" extra="留空则由AI为您起名">
+                <Input
+                  v-model:value="form.book_title"
+                  placeholder="输入书名，或留空让AI起名"
+                  :maxlength="30"
+                  show-count
                 />
               </Form.Item>
 

@@ -33,6 +33,10 @@ export interface Project {
   current_stage: PipelineStage
   created_at: string
   updated_at: string
+  book_title?: string
+  book_synopsis?: string
+  book_tags?: string[]
+  book_category?: string
 }
 
 /** 创建项目参数 */
@@ -203,4 +207,16 @@ export interface PaginatedResponse<T> {
   total: number
   page: number
   page_size: number
+}
+
+/** 书籍元数据 */
+export interface BookMetadata {
+  title: string
+  title_candidates: string[]
+  synopsis_short: string
+  synopsis_medium: string
+  synopsis_long: string
+  tags: string[]
+  category: string
+  category_path: string
 }

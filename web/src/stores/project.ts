@@ -12,6 +12,7 @@ import type {
   ReviewReport,
   CreateProjectParams,
   ConfirmAction,
+  BookMetadata,
 } from '@/types'
 
 export const useProjectStore = defineStore('project', () => {
@@ -25,6 +26,7 @@ export const useProjectStore = defineStore('project', () => {
   const outline = ref<Outline | null>(null)
   const currentChapter = ref<Chapter | null>(null)
   const reviewReport = ref<ReviewReport | null>(null)
+  const metadata = ref<BookMetadata | null>(null)
 
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -192,6 +194,46 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  async function fetchMetadata(projectId: string) {
+    loading.value = true
+    try {
+      const res = await api.getMetadata(projectId)
+      metadata.value = res.data.data
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateMetadata(projectId: string, data: Partial<BookMetadata>) {
+    loading.value = true
+    try {
+      await api.updateMetadata(projectId, data)
+      if (metadata.value) {
+        metadata.value = { ...metadata.value, ...data }
+      }
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function regenerateMetadata(projectId: string) {
+    loading.value = true
+    try {
+      const res = await api.regenerateMetadata(projectId)
+      metadata.value = res.data.data
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearCurrent() {
     currentProject.value = null
     pipelineStatus.value = null
@@ -201,6 +243,7 @@ export const useProjectStore = defineStore('project', () => {
     outline.value = null
     currentChapter.value = null
     reviewReport.value = null
+    metadata.value = null
   }
 
   return {
@@ -214,6 +257,7 @@ export const useProjectStore = defineStore('project', () => {
     outline,
     currentChapter,
     reviewReport,
+    metadata,
     loading,
     error,
     // 计算属性
@@ -233,6 +277,9 @@ export const useProjectStore = defineStore('project', () => {
     fetchOutline,
     fetchChapter,
     fetchReview,
+    fetchMetadata,
+    updateMetadata,
+    regenerateMetadata,
     clearCurrent,
   }
 })

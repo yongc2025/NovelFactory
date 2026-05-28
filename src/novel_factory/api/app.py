@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from novel_factory.api.deps import get_pipeline, get_store
 from novel_factory.api.schemas import (
     GENRE_MATRIX,
+    BookMetadata,
     ChapterResponse,
     CharacterResponse,
     ConfigResponse,
@@ -43,6 +44,7 @@ STAGES = [
     ("world", "世界观搭建"),
     ("character", "角色设计"),
     ("outline", "大纲编剧"),
+    ("metadata", "元数据生成"),
     ("scene", "场景细纲"),
     ("draft", "正文生成"),
     ("review", "编辑审校"),
@@ -262,6 +264,11 @@ async def _run_pipeline_background(
                     result = await pipeline._step_outline(
                         project_id, topic, world, characters, target_chapters
                     )
+                elif stage_key == "metadata":
+                    topic = store.get_topic(project_id) or {}
+                    outline = store.get_outline(project_id) or {}
+                    characters = store.get_characters(project_id) or {}
+                    result = await pipeline._step_metadata(project_id, topic, outline, characters)
                 elif stage_key == "scene":
                     outline = store.get_outline(project_id) or {}
                     characters = store.get_characters(project_id) or {}
@@ -606,6 +613,56 @@ async def get_review(project_id: str):
     if review is None:
         raise HTTPException(status_code=404, detail="审校报告尚未生成")
     return ReviewResponse(project_id=project_id, review=review)
+
+
+# ── 书籍元数据 ──────────────────────────────────────────────
+
+@app.get("/api/projects/{project_id}/metadata", response_model=BookMetadata)
+async def get_metadata(project_id: str):
+    """获取书籍元数据"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    metadata = store.get_metadata(project_id)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="书籍元数据尚未生成")
+    return BookMetadata(**metadata)
+
+
+@app.post("/api/projects/{project_id}/metadata", response_model=BookMetadata)
+async def update_metadata(project_id: str, body: dict):
+    """手动更新书籍元数据"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    # 读取现有元数据并合并更新
+    existing = store.get_metadata(project_id) or {}
+    existing.update(body)
+    store.save_metadata(project_id, existing)
+    return BookMetadata(**existing)
+
+
+@app.post("/api/projects/{project_id}/metadata/regenerate", response_model=BookMetadata)
+async def regenerate_metadata(project_id: str):
+    """重新生成书籍元数据"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    # 获取生成元数据所需的数据
+    topic = store.get_topic(project_id) or {}
+    outline = store.get_outline(project_id) or {}
+    characters = store.get_characters(project_id) or {}
+    params = store.get_params(project_id) or {}
+
+    try:
+        from novel_factory.engine.metadata import generate_metadata
+        metadata = await generate_metadata(project_id, topic, outline, characters, params)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"元数据生成失败: {e}")
+
+    store.save_metadata(project_id, metadata)
+    return BookMetadata(**metadata)
 
 
 # ── 系统配置 ────────────────────────────────────────────────

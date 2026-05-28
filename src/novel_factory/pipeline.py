@@ -26,6 +26,7 @@ STAGES = [
     ("world", "世界观搭建"),
     ("character", "角色设计"),
     ("outline", "大纲编剧"),
+    ("metadata", "元数据生成"),
     ("scene", "场景细纲"),
     ("draft", "正文生成"),
     ("review", "编辑审校"),
@@ -103,6 +104,9 @@ class NovelPipeline:
                 outline = await self._step_outline(project_id, topic, world, characters, target_chapters, params)
                 self._print_stage_result("章节大纲", outline)
                 chapters = outline.get("chapters", [])
+            elif stage_key == "metadata":
+                metadata = await self._step_metadata(project_id, topic, outline, characters, params)
+                self._print_stage_result("书籍元数据", metadata)
             elif stage_key == "scene":
                 for ch in chapters:
                     ch_num = ch.get("chapter_num", 0)
@@ -289,6 +293,17 @@ class NovelPipeline:
         self.store.update_project_status(project_id, "outlined")
         return result
 
+    async def _step_metadata(self, project_id: str, topic: dict, outline: dict, characters: dict, params: dict) -> dict:
+        """阶段 5：书籍元数据生成"""
+        try:
+            from novel_factory.engine.metadata import generate_metadata
+            result = await generate_metadata(project_id, topic, outline, characters, params)
+        except Exception:
+            result = await self._placeholder_metadata(topic)
+        self.store.save_metadata(project_id, result)
+        self.store.update_project_status(project_id, "metadata_done")
+        return result
+
     async def _step_scene(self, project_id: str, chapter: dict, characters: dict, params: dict) -> dict:
         """阶段 5：场景细纲"""
         try:
@@ -344,6 +359,19 @@ class NovelPipeline:
     async def _placeholder_outline(self, topic: dict, target_chapters: int) -> dict:
         chapters = [{"chapter_num": i, "title": f"第{i}章", "core_event": f"第{i}章核心事件", "hook": f"悬念{i}"} for i in range(1, target_chapters + 1)]
         return {"chapters": chapters, "foreshadows": []}
+
+    async def _placeholder_metadata(self, topic: dict) -> dict:
+        title = topic.get("title", "未命名") if topic else "未命名"
+        return {
+            "title": title,
+            "title_candidates": [title],
+            "synopsis_short": "",
+            "synopsis_medium": "",
+            "synopsis_long": "",
+            "tags": [],
+            "category": "",
+            "category_path": "",
+        }
 
     async def _placeholder_scene(self, chapter: dict) -> list:
         return [{"number": 1, "location": "待定", "conflict": chapter.get("core_event", ""), "emotion_start": "平静", "emotion_end": "悬念"}]

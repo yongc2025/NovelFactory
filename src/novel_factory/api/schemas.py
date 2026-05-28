@@ -77,6 +77,12 @@ class ProjectCreate(BaseModel):
     target_audience: str = Field("female", description="目标读者: female/male/general")
     tone: str | None = Field(None, description="内容基调: 爽文/虐文/甜文/悬疑/热血/治愈")
 
+    # 书籍元数据（可选，AI可生成）
+    book_title: str | None = Field(None, max_length=30, description="书名，留空则AI生成")
+    book_synopsis: str | None = Field(None, max_length=500, description="简介，留空则AI生成")
+    book_tags: list[str] = Field(default_factory=list, description="标签，留空则AI推荐")
+    book_category: str | None = Field(None, description="分类，留空则AI匹配")
+
     # Level 3: 角色预设（选填）
     protagonist_name: str | None = Field(None, description="主角名，留空则 AI 命名")
     protagonist_desc: str | None = Field(None, description="主角人设，一句话描述")
@@ -210,6 +216,18 @@ class TopicResponse(BaseModel):
     """选题方案响应"""
     project_id: str
     topic: dict[str, Any]
+
+
+class BookMetadata(BaseModel):
+    """书籍元数据响应"""
+    title: str
+    title_candidates: list[str] = []  # 5个候选书名
+    synopsis_short: str = ""   # 50字简介
+    synopsis_medium: str = ""  # 150字简介
+    synopsis_long: str = ""    # 300字简介
+    tags: list[str] = []
+    category: str = ""
+    category_path: str = ""  # 如 "男频 > 玄幻 > 异世大陆"
 
 
 class OutlineResponse(BaseModel):
