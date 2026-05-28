@@ -19,6 +19,7 @@ async def generate_outline(
     world: list[dict],
     characters: list[dict],
     target_chapters: int = 10,
+    params: dict | None = None,
 ) -> dict:
     """
     生成章节大纲
@@ -29,10 +30,9 @@ async def generate_outline(
         world: 世界观设定
         characters: 角色列表
         target_chapters: 目标章节数
-
-    Returns:
-        {"chapters": [...], "foreshadows": [...]}
+        params: 项目创建参数，包含节奏/爽点/伏笔等策略
     """
+    params = params or {}
     logger.info("开始生成大纲，项目: %s，目标 %d 章", project_id, target_chapters)
 
     characters_summary = "\n".join(
@@ -44,16 +44,34 @@ async def generate_outline(
         for ws in world
     )
 
+    # 构建节奏约束
+    rhythm_parts = []
+    if params.get("climax_density"):
+        density_map = {"high": "高密度爽点（每1-2章一个小爽点）", "medium": "中等密度（每3-4章一个小爽点）", "low": "低密度（重铺垫，每5-6章一个爽点）"}
+        rhythm_parts.append(f"爽点密度：{density_map.get(params['climax_density'], params['climax_density'])}")
+    if params.get("climax_interval"):
+        rhythm_parts.append(f"每{params['climax_interval']}章安排一个小爽点")
+    if params.get("foreshadow_count"):
+        rhythm_parts.append(f"埋设{params['foreshadow_count']}个伏笔")
+    if params.get("tone"):
+        rhythm_parts.append(f"内容基调：{params['tone']}")
+    if params.get("chapter_word_range"):
+        rhythm_parts.append(f"每章字数：{params['chapter_word_range'][0]}-{params['chapter_word_range'][1]}字")
+
+    rhythm_text = "\n".join(rhythm_parts) if rhythm_parts else ""
+
     user_prompt = render_prompt(
         OUTLINER_USER,
         title=topic.get("title", "未命名"),
-        genre=topic.get("genre", ""),
+        genre=topic.get("genre", params.get("genre_major", "")),
         premise=topic.get("premise", ""),
-        word_count=topic.get("word_count", "8000"),
+        word_count=params.get("target_words", topic.get("word_count", "8000")),
         characters_summary=characters_summary,
         world_summary=world_summary,
         target_chapters=target_chapters,
     )
+    if rhythm_text:
+        user_prompt += f"\n\n节奏与策略要求：\n{rhythm_text}"
 
     messages = [
         {"role": "system", "content": render_prompt(OUTLINER_SYSTEM, target_chapters=target_chapters)},
@@ -76,14 +94,12 @@ def _parse_outline(response: str, target_chapters: int) -> dict:
 
         data = json.loads(json_str.strip())
 
-        # 兼容不同格式
         if isinstance(data, list):
             data = {"chapters": data}
 
         chapters = data.get("chapters", [])
         foreshadows = data.get("foreshadows", [])
 
-        # 给每章加上 chapter_num
         for i, ch in enumerate(chapters, 1):
             if "chapter_num" not in ch:
                 ch["chapter_num"] = i

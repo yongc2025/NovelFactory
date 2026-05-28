@@ -13,17 +13,20 @@ from novel_factory.llm.prompts import CHARACTER_SYSTEM, CHARACTER_USER, render_p
 logger = logging.getLogger(__name__)
 
 
-async def design_characters(project_id: str, world: list[dict]) -> list[dict]:
+async def design_characters(
+    project_id: str,
+    world: list[dict],
+    params: dict | None = None,
+) -> list[dict]:
     """
     设计角色
 
     Args:
         project_id: 项目 ID
         world: 世界观设定列表
-
-    Returns:
-        角色列表
+        params: 项目创建参数，包含角色预设
     """
+    params = params or {}
     logger.info("开始设计角色，项目: %s", project_id)
 
     world_summary = "\n".join(
@@ -31,13 +34,36 @@ async def design_characters(project_id: str, world: list[dict]) -> list[dict]:
         for ws in world
     )
 
+    # 构建角色约束
+    constraints = []
+    if params.get("protagonist_name"):
+        constraints.append(f"主角名：{params['protagonist_name']}")
+    if params.get("protagonist_desc"):
+        constraints.append(f"主角人设：{params['protagonist_desc']}")
+    if params.get("antagonist_name"):
+        constraints.append(f"反派名：{params['antagonist_name']}")
+    if params.get("antagonist_desc"):
+        constraints.append(f"反派人设：{params['antagonist_desc']}")
+    if params.get("has_romance") and params["has_romance"] != "flexible":
+        constraints.append(f"CP线：{'需要' if params['has_romance'] == 'yes' else '不需要'}")
+    if params.get("romance_desc"):
+        constraints.append(f"CP设定：{params['romance_desc']}")
+    if params.get("supporting_count"):
+        constraints.append(f"配角数量：{params['supporting_count']}个")
+    if params.get("target_audience") and params["target_audience"] != "general":
+        audience = "女频" if params["target_audience"] == "female" else "男频"
+        constraints.append(f"目标读者：{audience}")
+
+    constraint_text = "\n".join(constraints) if constraints else "（无特殊约束）"
+
     user_prompt = render_prompt(
         CHARACTER_USER,
         title=project_id,
-        genre="",
-        premise="",
+        genre=params.get("genre_major", ""),
+        premise=params.get("premise", ""),
         world_summary=world_summary,
     )
+    user_prompt += f"\n\n角色约束：\n{constraint_text}"
 
     messages = [
         {"role": "system", "content": CHARACTER_SYSTEM},
@@ -60,7 +86,6 @@ def _parse_characters(response: str) -> list[dict]:
 
         characters = json.loads(json_str.strip())
 
-        # 兼容嵌套格式
         if isinstance(characters, dict):
             result = []
             for key in ["protagonist", "antagonist"]:

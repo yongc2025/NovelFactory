@@ -1,9 +1,5 @@
 """
 世界观架构师 — 构建完整、自洽的世界观设定
-
-职责：
-1. 从时代背景、核心规则、势力分布、社会体系四个维度构建世界观
-2. 确保世界观服务于故事冲突，而非堆砌设定
 """
 
 from __future__ import annotations
@@ -17,27 +13,47 @@ from novel_factory.llm.prompts import WORLDBUILDER_SYSTEM, WORLDBUILDER_USER, re
 logger = logging.getLogger(__name__)
 
 
-async def build_world(project_id: str, proposal: dict) -> list[dict]:
+async def build_world(
+    project_id: str,
+    proposal: dict,
+    params: dict | None = None,
+) -> list[dict]:
     """
     构建世界观设定
 
     Args:
         project_id: 项目 ID
-        proposal: 选题方案，包含 title, genre, premise 等字段
-
-    Returns:
-        世界观设定列表
+        proposal: 选题方案
+        params: 项目创建参数，包含 world_setting/world_custom/forbidden_elements 等
     """
+    params = params or {}
     logger.info("开始构建世界观，项目: %s", project_id)
+
+    # 构建约束信息
+    constraints = []
+    if params.get("world_setting"):
+        constraints.append(f"时空背景要求：{params['world_setting']}")
+    if params.get("world_custom"):
+        constraints.append(f"自定义世界观：{params['world_custom']}")
+    if params.get("forbidden_elements"):
+        constraints.append(f"禁忌元素（绝对不能出现）：{', '.join(params['forbidden_elements'])}")
+    if params.get("reference_works"):
+        constraints.append(f"参考作品风格：{params['reference_works']}")
+    if params.get("target_audience") and params["target_audience"] != "general":
+        audience = "女频读者" if params["target_audience"] == "female" else "男频读者"
+        constraints.append(f"目标读者：{audience}")
+
+    constraint_text = "\n".join(constraints) if constraints else "（无特殊约束）"
 
     user_prompt = render_prompt(
         WORLDBUILDER_USER,
         title=proposal.get("title", "未命名"),
-        genre=proposal.get("genre", proposal.get("premise", "未知类型")),
-        premise=proposal.get("premise", "未设定"),
-        target_readers=proposal.get("target_readers", "通用读者"),
-        platforms=proposal.get("platforms", "番茄小说"),
+        genre=proposal.get("genre", params.get("genre_major", "")),
+        premise=proposal.get("premise", ""),
+        target_readers=proposal.get("target_readers", params.get("target_audience", "通用读者")),
+        platforms=proposal.get("platforms", ", ".join(params.get("platforms", ["番茄小说"]))),
     )
+    user_prompt += f"\n\n创作约束：\n{constraint_text}"
 
     messages = [
         {"role": "system", "content": WORLDBUILDER_SYSTEM},
@@ -60,7 +76,6 @@ def _parse_world(response: str) -> list[dict]:
 
         world_settings = json.loads(json_str.strip())
 
-        # 兼容不同返回格式
         if isinstance(world_settings, dict):
             for key in ["world_settings", "settings", "world", "elements"]:
                 if key in world_settings:
