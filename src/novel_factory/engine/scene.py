@@ -79,7 +79,7 @@ async def plan_scenes(project_id: str, chapter_id: str) -> list[dict]:
         {"role": "user", "content": user_prompt},
     ]
 
-    response = await complete(messages=messages, temperature=0.7, max_tokens=4096)
+    response = await complete(messages=messages, role="scene", temperature=0.7, max_tokens=4096)
 
     return _parse_and_store_scenes(project_id, chapter_id, response)
 

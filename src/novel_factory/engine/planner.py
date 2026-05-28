@@ -57,7 +57,7 @@ async def generate_proposals(
         {"role": "user", "content": user_prompt},
     ]
 
-    response = await complete(messages=messages, temperature=0.7, max_tokens=4096)
+    response = await complete(messages=messages, role="planner", temperature=0.7, max_tokens=4096)
 
     return _parse_proposals(response)
 
