@@ -1,19 +1,12 @@
 """
-´ó¸Ù±à¾ç ¡ª Éè¼Æ½ô´Õ¡¢ÓĞ½Ú×à¸ĞµÄÕÂ½Ú½á¹¹
-
-Ö°Ôğ£º
-1. Éú³ÉÕÂ½Ú´ó¸Ù£¬°üº¬ÍêÕûµÄÇé½ÚÏß¡¢ÇéĞ÷»¡Ïß¡¢·ü±Ê²Ù×÷
-2. Éú³É·ü±Ê²¿Êğ±í£¬È·±£·ü±ÊÓĞÃ÷È·µÄÂñÉèºÍ»ØÊÕµã
-3. ½«´ó¸ÙºÍ·ü±Ê´æÈëÊı¾İ¿â
+å¤§çº²ç¼–å‰§ â€” è®¾è®¡ç´§å‡‘ã€æœ‰èŠ‚å¥æ„Ÿçš„ç« èŠ‚ç»“æ„
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import uuid
 
-from novel_factory.db.connection import get_connection
 from novel_factory.llm.gateway import complete
 from novel_factory.llm.prompts import OUTLINER_SYSTEM, OUTLINER_USER, render_prompt
 
@@ -22,78 +15,58 @@ logger = logging.getLogger(__name__)
 
 async def generate_outline(
     project_id: str,
+    topic: dict,
+    world: list[dict],
+    characters: list[dict],
     target_chapters: int = 10,
-) -> list[dict]:
+) -> dict:
     """
-    Éú³ÉÕÂ½Ú´ó¸Ù
+    ç”Ÿæˆç« èŠ‚å¤§çº²
 
     Args:
-        project_id: ÏîÄ¿ ID
-        target_chapters: Ä¿±êÕÂ½ÚÊı£¬Ä¬ÈÏ 10 ÕÂ
+        project_id: é¡¹ç›® ID
+        topic: é€‰é¢˜æ–¹æ¡ˆ
+        world: ä¸–ç•Œè§‚è®¾å®š
+        characters: è§’è‰²åˆ—è¡¨
+        target_chapters: ç›®æ ‡ç« èŠ‚æ•°
 
     Returns:
-        ÕÂ½Ú´ó¸ÙÁĞ±í
+        {"chapters": [...], "foreshadows": [...]}
     """
-    logger.info("¿ªÊ¼Éú³É´ó¸Ù£¬ÏîÄ¿: %s£¬Ä¿±êÕÂ½ÚÊı: %d", project_id, target_chapters)
+    logger.info("å¼€å§‹ç”Ÿæˆå¤§çº²ï¼Œé¡¹ç›®: %sï¼Œç›®æ ‡ %d ç« ", project_id, target_chapters)
 
-    with get_connection() as conn:
-        project = conn.execute(
-            "SELECT * FROM projects WHERE id = ?", (project_id,)
-        ).fetchone()
+    characters_summary = "\n".join(
+        f"- {c.get('name', 'æœªçŸ¥')}: {c.get('role', '')}, {c.get('personality', '')}"
+        for c in characters
+    )
+    world_summary = "\n".join(
+        f"- {ws.get('category', '')}: {ws.get('content', '')[:80]}"
+        for ws in world
+    )
 
-        if not project:
-            raise ValueError(f"ÏîÄ¿²»´æÔÚ: {project_id}")
-
-        characters = conn.execute(
-            "SELECT name, role, personality_surface, core_desire, arc_start "
-            "FROM characters WHERE project_id = ?",
-            (project_id,),
-        ).fetchall()
-
-        world_settings = conn.execute(
-            "SELECT category, content FROM world_settings WHERE project_id = ?",
-            (project_id,),
-        ).fetchall()
-
-    char_summaries = []
-    for c in characters:
-        char_summaries.append(
-            f"- {c['name']}£¨{c['role'] or 'Î´Éè¶¨'}£©: "
-            f"{c['personality_surface'] or 'Î´Éè¶¨'}\n"
-            f"  ºËĞÄÓûÍû: {c['core_desire'] or 'Î´Éè¶¨'}\n"
-            f"  ½ÇÉ«»¡¹â: {c['arc_start'] or 'Î´Éè¶¨'}"
-        )
-    characters_summary = "\n".join(char_summaries) if char_summaries else "ÔİÎŞ½ÇÉ«ĞÅÏ¢"
-
-    world_summaries = []
-    for ws in world_settings:
-        world_summaries.append(f"¡¾{ws['category']}¡¿{ws['content']}")
-    world_summary = "\n\n".join(world_summaries) if world_summaries else "ÔİÎŞÊÀ½ç¹ÛÉè¶¨"
-
-    system_prompt = render_prompt(OUTLINER_SYSTEM, target_chapters=target_chapters)
     user_prompt = render_prompt(
         OUTLINER_USER,
-        title=project["title"],
-        genre=project["genre"] or "Î´Éè¶¨",
-        premise=project.get("premise") or "Î´Éè¶¨",
-        word_count=project.get("target_words") or "Î´Éè¶¨",
+        title=topic.get("title", "æœªå‘½å"),
+        genre=topic.get("genre", ""),
+        premise=topic.get("premise", ""),
+        word_count=topic.get("word_count", "8000"),
         characters_summary=characters_summary,
         world_summary=world_summary,
         target_chapters=target_chapters,
     )
 
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": render_prompt(OUTLINER_SYSTEM, target_chapters=target_chapters)},
         {"role": "user", "content": user_prompt},
     ]
 
     response = await complete(messages=messages, role="outliner", temperature=0.7, max_tokens=8192)
 
-    return _parse_and_store_outline(project_id, response)
+    return _parse_outline(response, target_chapters)
 
 
-def _parse_and_store_outline(project_id: str, response: str) -> list[dict]:
-    """½âÎö´ó¸Ù JSON ²¢´æÈëÊı¾İ¿â"""
+def _parse_outline(response: str, target_chapters: int) -> dict:
+    """è§£æå¤§çº² JSON"""
     try:
         json_str = response
         if "```json" in response:
@@ -103,78 +76,21 @@ def _parse_and_store_outline(project_id: str, response: str) -> list[dict]:
 
         data = json.loads(json_str.strip())
 
-        if isinstance(data, dict):
-            chapters = data.get("chapters", [])
-            foreshadows = data.get("foreshadows", [])
-        elif isinstance(data, list):
-            chapters = data
-            foreshadows = []
-        else:
-            raise ValueError(f"ÆÚÍû dict »ò list£¬µÃµ½ {type(data)}")
+        # å…¼å®¹ä¸åŒæ ¼å¼
+        if isinstance(data, list):
+            data = {"chapters": data}
 
-        if not isinstance(chapters, list):
-            raise ValueError(f"ÕÂ½ÚÊı¾İ¸ñÊ½´íÎó: {type(chapters)}")
+        chapters = data.get("chapters", [])
+        foreshadows = data.get("foreshadows", [])
 
-        with get_connection() as conn:
-            for i, ch in enumerate(chapters):
-                ch_id = str(uuid.uuid4())
-                cp = ch.get("characters_present", [])
-                fo = ch.get("foreshadow_ops", [])
-                plp = ch.get("plot_lines_progress", {})
+        # ç»™æ¯ç« åŠ ä¸Š chapter_num
+        for i, ch in enumerate(chapters, 1):
+            if "chapter_num" not in ch:
+                ch["chapter_num"] = i
 
-                conn.execute(
-                    "INSERT INTO chapters ("
-                    "id, project_id, chapter_num, title, outline, core_event, "
-                    "characters_present, emotion_position, emotion_arc, "
-                    "hook, foreshadow_ops, plot_lines_progress"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        ch_id,
-                        project_id,
-                        i + 1,
-                        ch.get("title"),
-                        ch.get("core_event"),  # outline
-                        ch.get("core_event"),
-                        json.dumps(cp, ensure_ascii=False) if isinstance(cp, list) else cp,
-                        ch.get("emotion_position"),
-                        json.dumps(ch.get("emotion_arc", {}), ensure_ascii=False)
-                        if isinstance(ch.get("emotion_arc"), dict) else ch.get("emotion_arc"),
-                        ch.get("hook"),
-                        json.dumps(fo, ensure_ascii=False) if isinstance(fo, list) else fo,
-                        json.dumps(plp, ensure_ascii=False) if isinstance(plp, dict) else plp,
-                    ),
-                )
-                ch["id"] = ch_id
-                ch["number"] = i + 1
-
-            for fs in foreshadows:
-                fs_id = str(uuid.uuid4())
-                chapter_id = None
-                if "chapter" in fs:
-                    for ch in chapters:
-                        if ch.get("number") == fs["chapter"]:
-                            chapter_id = ch["id"]
-                            break
-
-                conn.execute(
-                    "INSERT INTO foreshadows ("
-                    "id, project_id, content, planted_chapter, "
-                    "target_chapter, status"
-                    ") VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        fs_id,
-                        project_id,
-                        fs.get("content", ""),
-                        fs.get("planted_chapter"),
-                        fs.get("target_chapter"),
-                        fs.get("status", "planted"),
-                    ),
-                )
-                fs["id"] = fs_id
-
-        logger.info("´ó¸ÙÉú³ÉÍê³É£¬¹² %d ÕÂ£¬%d ¸ö·ü±Ê", len(chapters), len(foreshadows))
-        return chapters
+        logger.info("å¤§çº²ç”Ÿæˆå®Œæˆï¼Œå…± %d ç« ï¼Œ%d ä¸ªä¼ç¬”", len(chapters), len(foreshadows))
+        return {"chapters": chapters, "foreshadows": foreshadows}
 
     except (json.JSONDecodeError, IndexError, ValueError) as e:
-        logger.error("½âÎö´ó¸ÙÊı¾İÊ§°Ü: %s", e)
-        raise ValueError(f"LLM ·µ»ØµÄ JSON ¸ñÊ½´íÎó: {e}") from e
+        logger.error("è§£æå¤§çº²å¤±è´¥: %s", e)
+        raise ValueError(f"LLM è¿”å›çš„ JSON æ ¼å¼é”™è¯¯: {e}") from e

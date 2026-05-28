@@ -108,15 +108,20 @@ class NovelPipeline:
                     ch_num = ch.get("chapter_num", 0)
                     ch_title = ch.get("title", f"第{ch_num}章")
                     console.print(f"  场景细纲: {ch_title}")
-                    scene = await self._step_scene(project_id, ch, characters)
-                    self.store.save_scene(project_id, ch_num, scene)
+                    scenes = await self._step_scene(project_id, ch, characters)
+                    self.store.save_scene(project_id, ch_num, scenes)
             elif stage_key == "draft":
                 for ch in chapters:
                     ch_num = ch.get("chapter_num", 0)
                     ch_title = ch.get("title", f"第{ch_num}章")
                     console.print(f"  正文生成: {ch_title}")
-                    draft = await self._step_draft(project_id, ch, scene, characters)
-                    self.store.save_draft(project_id, ch_num, draft)
+                    ch_scenes = self.store.get_scene(project_id, ch_num) or []
+                    chapter_draft = ""
+                    scene_list = ch_scenes if isinstance(ch_scenes, list) else [ch_scenes]
+                    for single_scene in scene_list:
+                        draft = await self._step_draft(project_id, ch, single_scene, characters)
+                        chapter_draft += draft + "\n\n"
+                    self.store.save_draft(project_id, ch_num, chapter_draft.strip())
             elif stage_key == "review":
                 review = await self._step_review(project_id)
                 self._print_stage_result("审校报告", review)
@@ -259,13 +264,17 @@ class NovelPipeline:
 
             # 场景细纲
             console.print(f"  场景细纲...")
-            scene = await self._step_scene(project_id, ch, characters)
-            self.store.save_scene(project_id, ch_num, scene)
+            scenes = await self._step_scene(project_id, ch, characters)
+            self.store.save_scene(project_id, ch_num, scenes)
 
-            # 正文
+            # 正文（为每个场景生成正文，合并为一章）
             console.print(f"  正文生成...")
-            draft = await self._step_draft(project_id, ch, scene, characters)
-            self.store.save_draft(project_id, ch_num, draft)
+            chapter_draft = ""
+            scene_list = scenes if isinstance(scenes, list) else [scenes]
+            for si, single_scene in enumerate(scene_list):
+                draft = await self._step_draft(project_id, ch, single_scene, characters)
+                chapter_draft += draft + "\n\n"
+            self.store.save_draft(project_id, ch_num, chapter_draft.strip())
 
         self.store.update_project_status(project_id, "drafted")
 
@@ -345,7 +354,13 @@ class NovelPipeline:
         try:
             from novel_factory.engine.outliner import generate_outline
 
-            result = await generate_outline(project_id, target_chapters)
+            # characters 可能是 list 或 dict，统一处理
+            char_list = characters if isinstance(characters, list) else characters.get("protagonist", []) if isinstance(characters, dict) else []
+            if isinstance(char_list, dict):
+                char_list = [char_list]
+            world_list = world if isinstance(world, list) else []
+
+            result = await generate_outline(project_id, topic, world_list, char_list, target_chapters)
         except (ImportError, AttributeError):
             result = await self._placeholder_outline(topic, target_chapters)
 
@@ -360,7 +375,7 @@ class NovelPipeline:
         try:
             from novel_factory.engine.scene import plan_scenes
 
-            result = await plan_scenes(project_id, chapter.get("id", ""))
+            result = await plan_scenes(project_id, chapter)
         except (ImportError, AttributeError):
             result = await self._placeholder_scene(chapter)
 
@@ -377,7 +392,8 @@ class NovelPipeline:
         try:
             from novel_factory.engine.writer import write_scene
 
-            result = await write_scene(project_id, chapter.get("id", ""))
+            char_list = characters if isinstance(characters, list) else []
+            result = await write_scene(project_id, chapter, scene, char_list)
         except (ImportError, AttributeError):
             result = await self._placeholder_draft(chapter)
 
@@ -386,12 +402,22 @@ class NovelPipeline:
     async def _step_review(self, project_id: str) -> dict[str, Any]:
         """阶段 7：编辑审校"""
         drafts = self.store.get_all_drafts(project_id)
+        outline = self.store.get_outline(project_id) or {}
+        chapters = outline.get("chapters", [])
+
         try:
             from novel_factory.engine.editor import review_chapter
 
-            # Review the first chapter as a sample, or all if available
-            result = await self._placeholder_review(drafts)
-            # TODO: integrate per-chapter review
+            # 审校第一章作为样本
+            if drafts and chapters:
+                first_ch = chapters[0]
+                first_draft = drafts[0] if isinstance(drafts, list) else drafts
+                if isinstance(first_draft, dict):
+                    first_draft = first_draft.get("draft", "")
+                result = await review_chapter(project_id, first_ch, first_draft)
+                result["total_chapters"] = len(drafts) if isinstance(drafts, list) else 1
+            else:
+                result = await self._placeholder_review(drafts)
         except (ImportError, AttributeError):
             result = await self._placeholder_review(drafts)
 
