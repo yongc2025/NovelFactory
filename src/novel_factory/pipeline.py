@@ -92,8 +92,10 @@ class NovelPipeline:
             console.print(f"\n[bold cyan][{i}/{total_steps}][/bold cyan] {stage_name}...")
 
             if stage_key == "topic":
-                topic = await self._step_topic(project_id, inspiration, genre_hint, params)
-                self._print_stage_result("选题评估", topic)
+                proposals = await self._step_topic(project_id, inspiration, genre_hint, params)
+                self._print_stage_result("选题评估", proposals)
+                # 下游步骤使用选中的方案
+                topic = next((p for p in proposals if p.get("selected")), proposals[0]) if proposals else {}
             elif stage_key == "world":
                 world = await self._step_world(project_id, topic, params)
                 self._print_stage_result("世界观设定", world)
@@ -180,7 +182,9 @@ class NovelPipeline:
             console.print(f"\n[bold cyan][{i}/4][/bold cyan] {step_name}...")
             result = await step_fn()
             self._print_stage_result(step_name, result)
-            if i == 1: topic = result
+            if i == 1:
+                proposals = result
+                topic = next((p for p in proposals if p.get("selected")), proposals[0]) if proposals else {}
             elif i == 2: world = result
             elif i == 3: characters = result
             elif i == 4: outline = result
@@ -246,17 +250,23 @@ class NovelPipeline:
 
     # ── 内部阶段方法 ──────────────────────────────────────────
 
-    async def _step_topic(self, project_id: str, inspiration: str, genre_hint: str | None, params: dict) -> dict:
-        """阶段 1：选题评估"""
+    async def _step_topic(self, project_id: str, inspiration: str, genre_hint: str | None, params: dict) -> list[dict]:
+        """阶段 1：选题评估，返回全部方案列表"""
         try:
             from novel_factory.engine.planner import generate_proposals
             proposals = await generate_proposals(inspiration, genre_hint, params)
-            result = proposals[0] if proposals else await self._placeholder_topic(inspiration, genre_hint)
+            if not proposals:
+                proposals = [await self._placeholder_topic(inspiration, genre_hint)]
         except Exception:
-            result = await self._placeholder_topic(inspiration, genre_hint)
-        self.store.save_topic(project_id, result)
+            proposals = [await self._placeholder_topic(inspiration, genre_hint)]
+        # 给每个方案注入 id 和 project_id
+        for i, p in enumerate(proposals):
+            p.setdefault("id", f"topic_{i+1}")
+            p["project_id"] = project_id
+            p.setdefault("selected", i == 0)
+        self.store.save_topic(project_id, proposals)
         self.store.update_project_status(project_id, "topic_done")
-        return result
+        return proposals
 
     async def _step_world(self, project_id: str, topic: dict, params: dict) -> dict:
         """阶段 2：世界观搭建"""
@@ -348,7 +358,21 @@ class NovelPipeline:
     # ── 占位实现 ──────────────────────────────────────────────
 
     async def _placeholder_topic(self, inspiration: str, genre: str | None) -> dict:
-        return {"title": inspiration[:20], "genre": genre or "通用", "premise": f"基于灵感「{inspiration}」的故事", "score": 5}
+        return {
+            "id": "topic_1",
+            "title": inspiration[:20],
+            "logline": f"基于灵感「{inspiration}」的故事",
+            "theme": "待定",
+            "genre": genre or "通用",
+            "target_audience": "",
+            "conflict": "",
+            "hook": "",
+            "platforms": [],
+            "word_count": "",
+            "score": 50,
+            "reasoning": "占位方案，请重新生成",
+            "selected": True,
+        }
 
     async def _placeholder_world(self, topic: dict) -> dict:
         return [{"category": "时代背景", "content": "现代都市"}, {"category": "核心规则", "content": "重生者拥有前世记忆"}]

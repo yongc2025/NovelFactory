@@ -74,6 +74,63 @@
 - MiMo V2.5 Pro（备选）
 - 通过 gateway.py 统一调用，角色自动路由
 
+---
+
+## 5.1 编码规范（强制）
+
+> 完整规范见 `docs/coding-standards.md`，以下为硬性约束。
+
+### 后端 Python 硬性限制
+
+| 指标 | 警告阈值 | 上限 | 超标处理 |
+|------|---------|------|----------|
+| 文件行数 | 300 行 | 500 行 | 500+ 必须拆分 |
+| 函数行数 | 30 行 | 50 行 | 50+ 必须拆分 |
+| 参数个数 | 4 个 | 6 个 | 6+ 用 dataclass/Pydantic |
+| 嵌套层级 | 3 层 | 4 层 | 4+ 用早返回 |
+| 圈复杂度 | 8 | 12 | 12+ 重构 |
+| 导入数量 | 15 个 | 20 个 | 20+ 职责过多 |
+
+- 超过警告阈值：加 `# TODO: 指标超标，考虑优化`
+- 超过上限：必须重构，否则不合并
+
+### 前端 Vue/TypeScript 硬性限制
+
+| 指标 | 警告阈值 | 上限 | 超标处理 |
+|------|---------|------|----------|
+| `.vue` 文件总行数 | 200 行 | 350 行 | 350+ 必须拆组件 |
+| `<script>` 行数 | 150 行 | 250 行 | 250+ 提取 composable |
+| `<template>` 行数 | 80 行 | 150 行 | 150+ 提取子组件 |
+| `.ts` 文件行数 | 200 行 | 400 行 | 400+ 拆模块 |
+| 函数行数 | 25 行 | 40 行 | 40+ 必须拆分 |
+| 组件内变量/函数 | 10 个 | 15 个 | 15+ 组件过大 |
+| any 使用 | 0 个 | — | 用 unknown + 类型守卫 |
+
+### 命名规范速查
+
+| 类型 | Python | Vue/TS |
+|------|--------|--------|
+| 文件 | snake_case.py | PascalCase.vue / camelCase.ts |
+| 类 | PascalCase | PascalCase（接口/类型） |
+| 函数 | snake_case | camelCase |
+| 常量 | UPPER_SNAKE_CASE | UPPER_SNAKE_CASE |
+| 布尔 | is_/has_/can_ | is/has/can |
+| composable | — | use 前缀 |
+
+### 提交规范
+
+```
+<type>(<scope>): <description>
+
+type: feat / fix / refactor / style / docs / test / chore
+scope: web / api / engine / cli / docs
+```
+
+示例：
+- `feat(web): 新增引导式灵感创建流程`
+- `fix(api): 修复流水线状态丢失问题`
+- `refactor(engine): 拆分 writer.py 超长函数`
+
 ## 6. 存储架构
 
 ```

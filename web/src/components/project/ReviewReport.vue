@@ -39,6 +39,11 @@ const issueColumns = [
   { title: '问题描述', dataIndex: 'description', ellipsis: true },
   { title: '建议', dataIndex: 'suggestion', ellipsis: true },
 ]
+
+// 建议列表渲染函数
+function renderSuggestionItem(opt: { item: string; index: number }) {
+  return h(List.Item, null, () => `${opt.index + 1}. ${opt.item}`)
+}
 </script>
 
 <template>
@@ -90,7 +95,7 @@ const issueColumns = [
           :data-source="report.issues"
           :pagination="{ pageSize: 10 }"
           size="small"
-          :row-key="(_: ReviewIssue, i: number) => i"
+          :row-key="(_: any, i: any) => i"
         />
       </Card>
 
@@ -98,7 +103,7 @@ const issueColumns = [
         <List
           :data-source="report.suggestions"
           size="small"
-          :render-item="(item: string, index: number) => h(List.Item, null, () => `${index + 1}. ${item}`)"
+          :render-item="renderSuggestionItem"
         />
       </Card>
     </template>

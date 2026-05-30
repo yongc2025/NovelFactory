@@ -53,7 +53,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.listProjects()
-      projects.value = res.data.data
+      projects.value = res.data.data ?? res.data
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -65,7 +65,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getProject(id)
-      currentProject.value = res.data.data
+      currentProject.value = res.data.data ?? res.data
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -77,8 +77,9 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.createProject(params)
-      projects.value.unshift(res.data.data)
-      return res.data.data
+      const project = res.data.data ?? res.data
+      projects.value.unshift(project)
+      return project
     } catch (e: any) {
       error.value = e.message
       throw e
@@ -90,9 +91,19 @@ export const useProjectStore = defineStore('project', () => {
   async function fetchPipelineStatus(id: string) {
     try {
       const res = await api.getPipelineStatus(id)
-      pipelineStatus.value = res.data.data
+      pipelineStatus.value = (res.data.data ?? res.data)
     } catch (e: any) {
       error.value = e.message
+    }
+  }
+
+  async function deleteProject(id: string) {
+    try {
+      await api.deleteProject(id)
+      projects.value = projects.value.filter((p) => p.id !== id)
+    } catch (e: any) {
+      error.value = e.message
+      throw e
     }
   }
 
@@ -100,7 +111,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.startPipeline(id)
-      pipelineStatus.value = res.data.data
+      pipelineStatus.value = (res.data.data ?? res.data)
     } catch (e: any) {
       error.value = e.message
       throw e
@@ -109,11 +120,25 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  async function confirmStage(id: string, action: ConfirmAction) {
+  async function runStage(id: string, stage: string) {
     loading.value = true
     try {
-      await api.confirmStage(id, action)
+      await api.runStage(id, stage)
       await fetchPipelineStatus(id)
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function confirmStage(id: string, action: ConfirmAction, stage?: string) {
+    loading.value = true
+    try {
+      const res = await api.confirmStage(id, action, stage)
+      await fetchPipelineStatus(id)
+      return res
     } catch (e: any) {
       error.value = e.message
       throw e
@@ -126,7 +151,25 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getTopic(id)
-      topicPlans.value = res.data.data
+      const data: any = res.data.data ?? res.data
+      const plans = Array.isArray(data?.topic) ? data.topic : Array.isArray(data) ? data : []
+      // 兼容旧数据：补全缺失字段
+      topicPlans.value = plans.map((t: any) => ({
+        id: t.id || '',
+        project_id: t.project_id || id,
+        title: t.title || '',
+        logline: t.logline || t.premise || '',
+        theme: t.theme || '',
+        genre: t.genre || '',
+        target_audience: t.target_audience || t.target_readers || '',
+        conflict: t.conflict || '',
+        hook: t.hook || '',
+        platforms: Array.isArray(t.platforms) ? t.platforms : typeof t.platforms === 'string' ? [t.platforms] : [],
+        word_count: t.word_count || '',
+        score: typeof t.score === 'number' ? t.score : 0,
+        reasoning: t.reasoning || '',
+        selected: !!t.selected,
+      }))
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -138,7 +181,8 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getWorld(id)
-      worldSetting.value = res.data.data
+      const data = res.data.data ?? res.data
+      worldSetting.value = (data && Object.keys(data).length > 0) ? data : null
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -150,7 +194,8 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getCharacters(id)
-      characters.value = res.data.data
+      const data: any = res.data.data ?? res.data
+      characters.value = Array.isArray(data?.characters) ? data.characters : Array.isArray(data) ? data : []
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -162,7 +207,8 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getOutline(id)
-      outline.value = res.data.data
+      const data = res.data.data ?? res.data
+      outline.value = (data && Object.keys(data).length > 0) ? data : null
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -174,7 +220,8 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getChapter(id, num)
-      currentChapter.value = res.data.data
+      const data = res.data.data ?? res.data
+      currentChapter.value = (data && Object.keys(data).length > 0 && ((data as any).scenes || (data as any).draft)) ? data : null
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -186,7 +233,8 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getReview(id)
-      reviewReport.value = res.data.data
+      const data = res.data.data ?? res.data
+      reviewReport.value = (data && Object.keys(data).length > 0) ? data : null
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -198,7 +246,8 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getMetadata(projectId)
-      metadata.value = res.data.data
+      const data = res.data.data ?? res.data
+      metadata.value = (data && Object.keys(data).length > 0 && data.title) ? data : null
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -225,7 +274,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.regenerateMetadata(projectId)
-      metadata.value = res.data.data
+      metadata.value = (res.data.data ?? res.data)
     } catch (e: any) {
       error.value = e.message
       throw e
@@ -347,6 +396,7 @@ export const useProjectStore = defineStore('project', () => {
     createProject,
     fetchPipelineStatus,
     startPipeline,
+    runStage,
     confirmStage,
     fetchTopic,
     fetchWorld,
@@ -363,6 +413,7 @@ export const useProjectStore = defineStore('project', () => {
     updateOutlineData,
     updateChapterDraft,
     confirmStageAction,
+    deleteProject,
     clearCurrent,
   }
 })

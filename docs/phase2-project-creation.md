@@ -1,6 +1,12 @@
 # Phase 2：项目创建参数详细设计
 
 > 核心原则：最少输入启动，最多可选配置，为扩展留空间
+>
+> **实现状态（2026-05-29）**：✅ 完整实现
+> - 26 个参数全部定义在 `api/schemas.py` 的 `ProjectCreate` 中
+> - 前端 `ProjectCreate.vue` 实现 5 步 Tab 向导
+> - 参数通过 `pipeline.py` 注入到各 AI 角色的 prompt 中
+> - Task 0002 额外新增了 metadata 阶段（书名/简介/标签/分类自动生成）
 
 ---
 

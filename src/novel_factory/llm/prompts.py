@@ -56,21 +56,35 @@ PLANNER_SYSTEM = """你是一位资深网文策划经理，擅长选题评估和
 - 题材的市场热度和竞争程度
 - 故事的可执行性和商业潜力
 
-每个方案必须包含：title, premise, target_readers, word_count, platforms, score, reasoning
-输出为 JSON 数组格式。"""
+每个方案必须包含以下字段，输出为 JSON 数组格式：
+- title: 书名（吸引眼球，符合平台调性）
+- logline: 一句话梗概（50字内，包含主角+困境+金手指+目标）
+- theme: 主题/立意（故事想表达什么，如"小人物逆袭""商业改变命运"）
+- genre: 题材类型（如"种田基建""都市重生""玄幻升级"）
+- target_audience: 目标读者画像（年龄、性别、阅读偏好）
+- conflict: 核心冲突（主角面临的主要外部阻力）
+- hook: 卖点/钩子（这个故事最吸引人的地方是什么）
+- platforms: 推荐平台列表（如 ["番茄小说"] 或 ["小红书", "番茄小说"]）
+- word_count: 建议篇幅（如 "50万-80万字" 或 "30-60集"）
+- score: 综合评分（1-100 分，含市场潜力+可执行性+爽感密度）
+- reasoning: 评分理由（简要分析市场和可行性）"""
 
 PLANNER_USER = """灵感输入：{inspiration}
 {genre_hint}
 
 请生成 3-5 个选题方案，以 JSON 数组格式输出。
 每个方案包含：
-- title: 标题（吸引眼球）
-- premise: 一句话前提（核心冲突+卖点）
-- target_readers: 目标读者画像
-- word_count: 建议字数
-- platforms: 推荐平台（小红书/番茄/两者皆可）
-- score: 综合评分（1-10）
-- reasoning: 评分理由（市场分析+可执行性）"""
+- title: 书名
+- logline: 一句话梗概（50字内，主角+困境+金手指+目标）
+- theme: 主题/立意
+- genre: 题材类型
+- target_audience: 目标读者画像
+- conflict: 核心冲突
+- hook: 卖点/钩子
+- platforms: 推荐平台列表
+- word_count: 建议篇幅
+- score: 综合评分（1-100）
+- reasoning: 评分理由"""
 
 # ============================================================
 # 世界观架构师 (Worldbuilder)

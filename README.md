@@ -39,3 +39,9 @@
 ls .skills/
 python scripts/skill-picker.py --list
 ```
+
+python -m uvicorn novel_factory.api.app:app --reload --port 8000
+
+cd D:\workspace\NovelFactory\web
+
+npm run dev

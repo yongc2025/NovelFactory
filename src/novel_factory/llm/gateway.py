@@ -14,6 +14,7 @@ AI 角色 → 模型映射：
 
 import json
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -98,8 +99,11 @@ async def complete(
     }
 
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        logger.debug("LLM 调用: role=%s, model=%s, messages=%d 条", role, model_name, len(messages))
+        logger.info("LLM 请求: role=%s, model=%s, messages=%d 条, max_tokens=%d", role, model_name, len(messages), max_tokens)
+        logger.debug("LLM payload: %s", json.dumps(payload, ensure_ascii=False, indent=2)[:500])
+        start_time = time.time()
         resp = await client.post(url, json=payload, headers=headers)
+        elapsed = time.time() - start_time
         resp.raise_for_status()
 
         data = resp.json()
@@ -117,11 +121,13 @@ async def complete(
             "input_tokens": usage.get("prompt_tokens", 0),
             "output_tokens": usage.get("completion_tokens", 0),
         })
-        logger.debug(
-            "LLM 返回: role=%s, model=%s, %d 字符, tokens=%d/%d",
+        logger.info(
+            "LLM 完成: role=%s, model=%s, %d 字符, tokens=%d/%d, 耗时=%.1fs",
             role, model_name, len(content),
             usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0),
+            elapsed,
         )
+        logger.debug("LLM 返回内容: %s", content[:300])
 
         return content
 
@@ -148,7 +154,6 @@ async def complete_json(
         provider=provider,
         temperature=temperature,
         max_tokens=max_tokens,
-        response_format={"type": "json_object"},
         **kwargs,
     )
     # 尝试从 markdown code block 中提取 JSON

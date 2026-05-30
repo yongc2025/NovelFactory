@@ -131,14 +131,14 @@ function removeRelationship(index: number) {
         <Descriptions.Item label="人物弧光">{{ character.arc }}</Descriptions.Item>
       </Descriptions>
 
-      <div class="char-traits" v-if="character.traits.length">
+      <div class="char-traits" v-if="character.traits?.length">
         <span class="traits-label">特质：</span>
         <Tag v-for="trait in character.traits" :key="trait" color="purple">
           {{ trait }}
         </Tag>
       </div>
 
-      <div class="char-relationships" v-if="character.relationships.length">
+      <div class="char-relationships" v-if="character.relationships?.length">
         <div class="rel-title">人物关系</div>
         <List
           :data-source="character.relationships"

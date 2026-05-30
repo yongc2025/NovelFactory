@@ -1,19 +1,31 @@
 # NovelFactory 前端技术方案
 
 > 版本: v1.0 | 日期: 2026-05-28 | 作者: 墨 (Frontend Architect Subagent)
+> 2026-05-29 | 补充实现状态追踪
 
 ---
 
-## 目录
+## 📊 实现状态总览
 
-1. [现状分析](#1-现状分析)
-2. [技术选型](#2-技术选型)
-3. [前端架构设计](#3-前端架构设计)
-4. [路由设计](#4-路由设计)
-5. [API 接口设计](#5-api-接口设计)
-6. [核心页面组件设计](#6-核心页面组件设计)
-7. [MVP 范围与排期](#7-mvp-范围与排期)
-8. [目录结构](#8-目录结构)
+| 模块 | 设计状态 | 实现状态 | 偏差说明 |
+|------|---------|---------|----------|
+| 技术选型 | Vue3+Vite+AntDesign+Pinia | ✅ 一致 | 无 TailwindCSS |
+| 路由设计 | 10+ 路由 | **3 个路由** | Dashboard/ProjectCreate/ProjectDetail |
+| API 层 | 分文件 client/project/pipeline/... | **单文件 api/index.ts** | 未拆分 |
+| 状态管理 | 3 个 store | **1 个 store** | 只有 project.ts |
+| WebSocket | 设计完成 | **❌ 未实现** | 使用轮询 |
+| 项目列表 | ProjectCard + 筛选 | ✅ 基础版 | 无筛选 |
+| 项目创建 | 5 步 Tab 向导 | ✅ 完成 | 26 个参数 |
+| 大纲编辑器 | 树形+拖拽+详情面板 | **基础版** | 无拖拽，无详情面板 |
+| 章节列表 | Table + 批量操作 | ⚠️ 部分 | 在 ProjectDetail 中 |
+| 正文阅读器 | 阅读+编辑模式 | **只读模式** | 无编辑器 |
+| 角色管理 | 卡片+关系图+CRUD | ⚠️ 基础版 | 无关系图 |
+| 世界观设定 | 卡片+编辑抽屉 | ⚠️ 基础版 | — |
+| 审校报告 | 评分+问题列表+对比视图 | **基础版** | 无对比视图 |
+| 流水线控制台 | 时间线+日志流+控制 | **基础版** | 无日志流，用轮询 |
+| 导出管理 | 格式选择+预览 | **❌ 未实现** | 只有后端 Markdown 导出 |
+| 全局设置 | LLM 配置 | **❌ 未实现** | — |
+| 角色关系图 | ECharts 力导向图 | **❌ 未实现** | — |
 
 ---
 
@@ -284,6 +296,10 @@ export function usePipelineWs(projectId: Ref<string>) {
 
 ## 4. 路由设计
 
+> **实际实现**：仅 3 个路由（Dashboard / ProjectCreate / ProjectDetail），远少于设计。
+
+### 设计路由（完整）
+
 ```
 /                                    → 重定向到 /projects
 /projects                            → 项目列表（首页 Dashboard）
@@ -299,6 +315,23 @@ export function usePipelineWs(projectId: Ref<string>) {
 /projects/:id/publish                → 发布管理（后期）
 /settings                            → 全局设置（LLM 配置等）
 ```
+
+### 实际路由
+
+```typescript
+// router/index.ts — 实际实现
+const routes = [
+  { path: '/', redirect: '/dashboard' },
+  { path: '/dashboard', component: Dashboard },           // 项目列表
+  { path: '/project/create', component: ProjectCreate },  // 创建向导
+  { path: '/project/:id', component: ProjectDetail },     // 项目详情（所有数据在一个页面）
+]
+```
+
+### 偏差说明
+- 所有项目数据（topic/world/characters/outline/chapters/review）都放在 ProjectDetail 页面中
+- 未拆分为独立路由页面
+- 无大纲编辑器、正文阅读器等独立页面
 
 ```typescript
 // router/index.ts

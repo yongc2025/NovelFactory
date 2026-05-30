@@ -4,13 +4,26 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 
 const theme = {
   token: {
-    colorPrimary: '#1d39c4',
-    colorLink: '#1d39c4',
-    borderRadius: 6,
-    fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-      'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-      'Noto Color Emoji'`,
+    colorPrimary: '#6C5CE7',
+    colorLink: '#6C5CE7',
+    colorSuccess: '#00B894',
+    colorWarning: '#FDCB6E',
+    colorError: '#FF7675',
+    colorInfo: '#74B9FF',
+    borderRadius: 8,
+    fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif`,
+    colorBgContainer: '#1A1A2E',
+    colorBgElevated: '#1A1A2E',
+    colorBgLayout: '#0F0F23',
+    colorText: '#E2E8F0',
+    colorTextSecondary: '#94A3B8',
+    colorTextTertiary: '#64748B',
+    colorBorder: '#2D2D44',
+    colorBorderSecondary: '#3D3D5C',
+    controlHeight: 36,
+    wireframe: false,
   },
+  algorithm: undefined, // 不使用内置暗色算法，用自定义 token
 }
 </script>
 
@@ -22,35 +35,21 @@ const theme = {
 
 <style>
 :root {
-  --color-bg: #f5f5f5;
-  --color-bg-elevated: #ffffff;
-  --color-text: #1f1f1f;
-  --color-text-secondary: #8c8c8c;
-  --color-border: #d9d9d9;
-  --color-primary: #1d39c4;
-  --color-primary-hover: #2547cf;
-}
-
-[data-theme='dark'] {
-  --color-bg: #141414;
-  --color-bg-elevated: #1f1f1f;
-  --color-text: #ffffffd9;
-  --color-text-secondary: #ffffff73;
-  --color-border: #424242;
-  --color-primary: #3251c4;
-  --color-primary-hover: #4162d4;
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
-}
-
-#app {
-  min-height: 100vh;
+  --color-bg: #0F0F23;
+  --color-bg-elevated: #1A1A2E;
+  --color-bg-hover: #252542;
+  --color-bg-active: #2D2D4E;
+  --color-text: #E2E8F0;
+  --color-text-secondary: #94A3B8;
+  --color-text-tertiary: #64748B;
+  --color-border: #2D2D44;
+  --color-primary: #6C5CE7;
+  --color-primary-light: #A29BFE;
+  --color-primary-dark: #5A4BD1;
+  --color-secondary: #00B894;
+  --color-accent: #FD79A8;
+  --color-success: #00B894;
+  --color-warning: #FDCB6E;
+  --color-error: #FF7675;
 }
 </style>

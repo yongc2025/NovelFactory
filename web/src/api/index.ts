@@ -61,11 +61,20 @@ export function getProject(id: string) {
   return http.get<ApiResponse<Project>>(`/projects/${id}`)
 }
 
+/** 删除项目 */
+export function deleteProject(id: string) {
+  return http.delete(`/projects/${id}`)
+}
+
 // ========== 流水线 API ==========
 
 /** 启动流水线 */
 export function startPipeline(id: string) {
   return http.post<ApiResponse<PipelineStatus>>(`/projects/${id}/pipeline/start`)
+}
+
+export function runStage(projectId: string, stage: string) {
+  return http.post<ApiResponse<void>>(`/projects/${projectId}/pipeline/stage/${stage}`)
 }
 
 /** 获取流水线状态 */
@@ -74,8 +83,8 @@ export function getPipelineStatus(id: string) {
 }
 
 /** 确认阶段 */
-export function confirmStage(id: string, action: ConfirmAction) {
-  return http.post<ApiResponse<void>>(`/projects/${id}/pipeline/confirm`, { action })
+export function confirmStage(id: string, action: ConfirmAction, stage?: string) {
+  return http.post<ApiResponse<any>>(`/projects/${id}/pipeline/confirm`, { action, stage })
 }
 
 // ========== 内容 API ==========

@@ -74,7 +74,7 @@ async def generate_metadata(
     protagonist = _extract_protagonist(characters)
     genre = _build_genre_text(params)
     platforms = ", ".join(params.get("platforms", ["fanqie"]))
-    target_audience = _audience_label(params.get("target_audience", "female"))
+    target_audience = _audience_label(params.get("target_audience", "male"))
 
     # 用户偏好（来自 ProjectCreate 的 book_* 字段）
     user_title = params.get("book_title") or "无"

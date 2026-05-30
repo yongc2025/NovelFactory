@@ -49,8 +49,8 @@ async def build_world(
         WORLDBUILDER_USER,
         title=proposal.get("title", "未命名"),
         genre=proposal.get("genre", params.get("genre_major", "")),
-        premise=proposal.get("premise", ""),
-        target_readers=proposal.get("target_readers", params.get("target_audience", "通用读者")),
+        premise=proposal.get("logline", proposal.get("premise", "")),
+        target_readers=proposal.get("target_audience", proposal.get("target_readers", params.get("target_audience", "通用读者"))),
         platforms=proposal.get("platforms", ", ".join(params.get("platforms", ["番茄小说"]))),
     )
     user_prompt += f"\n\n创作约束：\n{constraint_text}"

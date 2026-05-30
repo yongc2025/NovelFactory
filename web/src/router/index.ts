@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '书籍元数据', tab: 'metadata' },
   },
   {
+    path: '/projects/:id/chapters',
+    name: 'ProjectChapters',
+    component: () => import('@/views/ProjectDetail.vue'),
+    meta: { title: '正文', tab: 'chapters' },
+  },
+  {
     path: '/projects/:id/chapters/:num',
     name: 'ChapterReader',
     component: () => import('@/views/ProjectDetail.vue'),

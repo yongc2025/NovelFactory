@@ -64,7 +64,7 @@ async def generate_outline(
         OUTLINER_USER,
         title=topic.get("title", "未命名"),
         genre=topic.get("genre", params.get("genre_major", "")),
-        premise=topic.get("premise", ""),
+        premise=topic.get("logline", topic.get("premise", "")),
         word_count=params.get("target_words", topic.get("word_count", "8000")),
         characters_summary=characters_summary,
         world_summary=world_summary,

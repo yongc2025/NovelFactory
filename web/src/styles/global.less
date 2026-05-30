@@ -1,0 +1,340 @@
+// ==========================================
+// NovelFactory 全局样式
+// ==========================================
+@import './design-tokens.less';
+@import './animations.less';
+
+// ---------- 全局重置 ----------
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: @font-size-base;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: @font-family;
+  color: @color-text;
+  background-color: @color-bg;
+  line-height: @line-height-normal;
+  overflow-x: hidden;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+// ---------- 滚动条美化 ----------
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: @color-border;
+  border-radius: @radius-full;
+  transition: background @transition-fast;
+
+  &:hover {
+    background: @color-border-light;
+  }
+}
+
+// Firefox
+* {
+  scrollbar-width: thin;
+  scrollbar-color: @color-border transparent;
+}
+
+// ---------- 选中状态 ----------
+::selection {
+  background: @color-primary-bg-hover;
+  color: @color-primary-light;
+}
+
+// ---------- 链接 ----------
+a {
+  color: @color-primary-light;
+  text-decoration: none;
+  transition: color @transition-fast;
+
+  &:hover {
+    color: @color-primary;
+  }
+}
+
+// ---------- Ant Design 暗色主题覆盖 ----------
+.ant-layout {
+  background: @color-bg !important;
+}
+
+.ant-layout-sider {
+  background: @color-bg-elevated !important;
+}
+
+.ant-layout-header {
+  background: @color-bg-elevated !important;
+}
+
+.ant-card {
+  background: @color-bg-elevated !important;
+  border-color: @color-border !important;
+  border-radius: @radius-lg !important;
+  color: @color-text !important;
+}
+
+.ant-card-head {
+  color: @color-text !important;
+  border-bottom-color: @color-border !important;
+}
+
+.ant-card-body {
+  color: @color-text !important;
+}
+
+.ant-btn {
+  border-radius: @radius-md !important;
+  font-weight: @font-weight-medium !important;
+  transition: all @transition-fast !important;
+}
+
+.ant-btn-primary {
+  background: @color-primary !important;
+  border-color: @color-primary !important;
+  box-shadow: @shadow-glow-primary !important;
+
+  &:hover {
+    background: @color-primary-light !important;
+    border-color: @color-primary-light !important;
+  }
+}
+
+.ant-btn-default {
+  background: @color-bg-elevated !important;
+  border-color: @color-border !important;
+  color: @color-text !important;
+
+  &:hover {
+    border-color: @color-primary !important;
+    color: @color-primary !important;
+  }
+}
+
+.ant-tag {
+  border-radius: @radius-full !important;
+  font-weight: @font-weight-medium !important;
+}
+
+.ant-menu-dark {
+  background: transparent !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: @color-primary-bg !important;
+  border-right: 3px solid @color-primary !important;
+}
+
+.ant-menu-dark .ant-menu-item:hover {
+  background: @color-bg-hover !important;
+}
+
+.ant-table {
+  background: @color-bg-elevated !important;
+  color: @color-text !important;
+}
+
+.ant-table-thead > tr > th {
+  background: @color-bg !important;
+  color: @color-text-secondary !important;
+  border-bottom-color: @color-border !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom-color: @color-border !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: @color-bg-hover !important;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker {
+  background: @color-bg !important;
+  border-color: @color-border !important;
+  color: @color-text !important;
+
+  &:hover,
+  &:focus {
+    border-color: @color-primary !important;
+  }
+}
+
+.ant-input::placeholder,
+.ant-input-affix-wrapper::placeholder {
+  color: @color-text-tertiary !important;
+}
+
+.ant-select-dropdown {
+  background: @color-bg-elevated !important;
+  border: 1px solid @color-border !important;
+}
+
+.ant-select-item {
+  color: @color-text !important;
+
+  &:hover {
+    background: @color-bg-hover !important;
+  }
+
+  &-option-selected {
+    background: @color-primary-bg !important;
+  }
+}
+
+.ant-modal-content {
+  background: @color-bg-elevated !important;
+  border: 1px solid @color-border !important;
+  border-radius: @radius-xl !important;
+}
+
+.ant-modal-header {
+  background: transparent !important;
+  border-bottom-color: @color-border !important;
+}
+
+.ant-modal-title {
+  color: @color-text !important;
+}
+
+.ant-modal-close {
+  color: @color-text-secondary !important;
+}
+
+.ant-spin-text {
+  color: @color-text-secondary !important;
+}
+
+.ant-pagination-item {
+  background: @color-bg-elevated !important;
+  border-color: @color-border !important;
+
+  a {
+    color: @color-text !important;
+  }
+
+  &-active {
+    background: @color-primary !important;
+    border-color: @color-primary !important;
+
+    a {
+      color: #fff !important;
+    }
+  }
+}
+
+.ant-steps-item-icon {
+  background: @color-bg-elevated !important;
+  border-color: @color-border !important;
+}
+
+.ant-steps-item-process .ant-steps-item-icon {
+  background: @color-primary !important;
+  border-color: @color-primary !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-icon {
+  background: @color-secondary !important;
+  border-color: @color-secondary !important;
+}
+
+.ant-steps-item-title {
+  color: @color-text !important;
+}
+
+.ant-steps-item-description {
+  color: @color-text-secondary !important;
+}
+
+.ant-tabs-tab {
+  color: @color-text-secondary !important;
+
+  &:hover {
+    color: @color-text !important;
+  }
+
+  &-active {
+    color: @color-primary !important;
+  }
+}
+
+.ant-tabs-ink-bar {
+  background: @color-primary !important;
+}
+
+.ant-dropdown-menu {
+  background: @color-bg-elevated !important;
+  border: 1px solid @color-border !important;
+}
+
+.ant-dropdown-menu-item {
+  color: @color-text !important;
+
+  &:hover {
+    background: @color-bg-hover !important;
+  }
+}
+
+.ant-message-notice-content {
+  background: @color-bg-elevated !important;
+  border: 1px solid @color-border !important;
+  color: @color-text !important;
+}
+
+.ant-popover-inner {
+  background: @color-bg-elevated !important;
+}
+
+.ant-popover-arrow::before {
+  background: @color-bg-elevated !important;
+}
+
+.ant-form-item-label > label {
+  color: @color-text !important;
+}
+
+.ant-checkbox-wrapper {
+  color: @color-text !important;
+}
+
+.ant-radio-wrapper {
+  color: @color-text !important;
+}
+
+.ant-divider {
+  border-color: @color-border !important;
+}
+
+.ant-empty-description {
+  color: @color-text-secondary !important;
+}
+
+.ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(90deg, @color-bg-hover 25%, @color-bg-active 50%, @color-bg-hover 75%) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.5s ease-in-out infinite !important;
+}

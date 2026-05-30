@@ -9,7 +9,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
-import { Layout, Menu, Button, theme } from 'ant-design-vue'
+import { Layout, Menu, Button } from 'ant-design-vue'
 
 const { Header, Sider, Content } = Layout
 
@@ -28,19 +28,15 @@ const selectedKeys = computed(() => {
 const menuItems = [
   { key: 'dashboard', icon: () => h(DashboardOutlined), label: '仪表盘' },
   { key: 'create', icon: () => h(PlusOutlined), label: '新建项目' },
-  { key: 'projects', icon: () => h(FolderOutlined), label: '项目列表' },
 ]
 
-function onMenuClick({ key }: { key: string }) {
+function onMenuClick({ key }: any) {
   switch (key) {
     case 'dashboard':
       router.push('/')
       break
     case 'create':
       router.push('/projects/create')
-      break
-    case 'projects':
-      router.push('/')
       break
   }
 }
@@ -54,21 +50,44 @@ function onMenuClick({ key }: { key: string }) {
       collapsible
       breakpoint="lg"
       class="app-sider"
-      :style="{ overflow: 'auto', height: '100vh', position: 'fixed', left: 0, top: 0, bottom: 0 }"
+      :width="220"
+      :collapsed-width="72"
     >
-      <div class="logo">
-        <span v-if="!collapsed" class="logo-text">📖 NovelFactory</span>
-        <span v-else class="logo-icon">📖</span>
+      <!-- Logo 区域 -->
+      <div class="logo-area">
+        <div class="logo-icon">📖</div>
+        <transition name="fade">
+          <div v-if="!collapsed" class="logo-text-group">
+            <span class="logo-text">NovelFactory</span>
+            <span class="logo-version">v1.0</span>
+          </div>
+        </transition>
       </div>
-      <Menu
-        theme="dark"
-        mode="inline"
-        :selected-keys="selectedKeys"
-        :items="menuItems"
-        @click="onMenuClick"
-      />
+
+      <!-- 导航菜单 -->
+      <div class="nav-section">
+        <Menu
+          theme="dark"
+          mode="inline"
+          :selected-keys="selectedKeys"
+          :items="menuItems"
+          @click="onMenuClick"
+          class="nav-menu"
+        />
+      </div>
+
+      <!-- 底部区域 -->
+      <div class="sider-footer">
+        <div class="footer-item" title="设置">
+          <SettingOutlined class="footer-icon" />
+          <transition name="fade">
+            <span v-if="!collapsed" class="footer-label">设置</span>
+          </transition>
+        </div>
+      </div>
     </Sider>
-    <Layout :style="{ marginLeft: collapsed ? '80px' : '200px', transition: 'margin-left 0.2s' }">
+
+    <Layout class="main-layout" :class="{ 'main-layout--collapsed': collapsed }">
       <Header class="app-header">
         <Button
           type="text"
@@ -80,10 +99,11 @@ function onMenuClick({ key }: { key: string }) {
             <MenuFoldOutlined v-else />
           </template>
         </Button>
-        <div class="header-right">
-          <SettingOutlined class="header-icon" />
+        <div class="header-title">
+          <slot name="header" />
         </div>
       </Header>
+
       <Content class="app-content">
         <slot />
       </Content>
@@ -91,69 +111,211 @@ function onMenuClick({ key }: { key: string }) {
   </Layout>
 </template>
 
-<style scoped>
+<style scoped lang="less">
+@import '@/styles/design-tokens.less';
+
 .app-layout {
   min-height: 100vh;
 }
 
 .app-sider {
-  background: #001529;
+  background: @color-bg-elevated !important;
+  border-right: 1px solid @color-border;
+  position: fixed !important;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  // 微光效果
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    background: linear-gradient(180deg, rgba(108, 92, 231, 0.05) 0%, transparent 100%);
+    pointer-events: none;
+  }
 }
 
-.logo {
-  height: 64px;
+// Logo 区域
+.logo-area {
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logo-text {
-  color: #fff;
-  font-size: 18px;
-  font-weight: 600;
-  white-space: nowrap;
+  gap: @space-sm;
+  padding: 0 @space-md;
+  border-bottom: 1px solid @color-border;
+  flex-shrink: 0;
 }
 
 .logo-icon {
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1;
 }
 
-.app-header {
-  background: var(--color-bg-elevated);
-  padding: 0 24px;
+.logo-text-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.logo-text {
+  color: @color-text;
+  font-size: @font-size-lg;
+  font-weight: @font-weight-bold;
+  white-space: nowrap;
+  background: @gradient-primary;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.logo-version {
+  font-size: @font-size-xs;
+  color: @color-text-tertiary;
+  white-space: nowrap;
+}
+
+// 导航区域
+.nav-section {
+  flex: 1;
+  padding: @space-md 0;
+  overflow-y: auto;
+}
+
+.nav-menu {
+  background: transparent !important;
+  border-right: none !important;
+
+  :deep(.ant-menu-item) {
+    margin: 4px 8px;
+    border-radius: @radius-md;
+    height: 44px;
+    line-height: 44px;
+    transition: all @transition-fast;
+
+    &:hover {
+      background: @color-bg-hover !important;
+    }
+
+    &.ant-menu-item-selected {
+      background: @color-primary-bg !important;
+      color: @color-primary-light !important;
+
+      &::after {
+        display: none;
+      }
+    }
+  }
+}
+
+// 底部区域
+.sider-footer {
+  padding: @space-md;
+  border-top: 1px solid @color-border;
+  flex-shrink: 0;
+}
+
+.footer-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  gap: @space-sm;
+  padding: @space-sm @space-md;
+  border-radius: @radius-md;
+  cursor: pointer;
+  transition: all @transition-fast;
+  color: @color-text-secondary;
+
+  &:hover {
+    background: @color-bg-hover;
+    color: @color-text;
+  }
+}
+
+.footer-icon {
+  font-size: 18px;
+}
+
+.footer-label {
+  font-size: @font-size-sm;
+  white-space: nowrap;
+}
+
+// 主布局
+.main-layout {
+  margin-left: 220px;
+  transition: margin-left @transition-normal;
+
+  &--collapsed {
+    margin-left: 72px;
+  }
+}
+
+// 顶部栏
+.app-header {
+  background: @color-bg-elevated !important;
+  padding: 0 @space-lg;
+  display: flex;
+  align-items: center;
+  gap: @space-md;
+  border-bottom: 1px solid @color-border;
+  height: 64px;
+  line-height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
 
 .collapse-btn {
   font-size: 18px;
-  width: 48px;
-  height: 48px;
-}
-
-.header-right {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  color: @color-text-secondary;
+  border-radius: @radius-md;
+  transition: all @transition-fast;
+
+  &:hover {
+    color: @color-text;
+    background: @color-bg-hover;
+  }
 }
 
-.header-icon {
-  font-size: 18px;
-  cursor: pointer;
-  color: var(--color-text-secondary);
+.header-title {
+  flex: 1;
 }
 
-.header-icon:hover {
-  color: var(--color-primary);
-}
-
+// 内容区
 .app-content {
-  padding: 24px;
+  padding: @space-lg;
   min-height: calc(100vh - 64px);
-  background: var(--color-bg);
+  background: @color-bg;
+}
+
+// 过渡动画
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity @transition-fast;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+// 响应式
+@media (max-width: @screen-lg) {
+  .main-layout {
+    margin-left: 0 !important;
+  }
 }
 </style>

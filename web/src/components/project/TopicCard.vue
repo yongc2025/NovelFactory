@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { Card, Tag, Button, Rate, Space, Input, InputNumber, message } from 'ant-design-vue'
 import {
   CheckCircleOutlined,
@@ -19,6 +19,14 @@ const emit = defineEmits<{
   select: [id: string]
   update: [data: TopicPlan]
 }>()
+
+/** 兼容旧数据：platforms 可能是字符串 */
+const platformsList = computed(() => {
+  const p = props.topic.platforms
+  if (Array.isArray(p)) return p
+  if (typeof p === 'string' && p) return [p]
+  return []
+})
 
 const editing = ref(false)
 const editData = ref<TopicPlan | null>(null)
@@ -79,6 +87,10 @@ async function saveEdit() {
             <span>{{ topic.theme }}</span>
           </div>
           <div class="meta-item">
+            <span class="meta-label">题材：</span>
+            <span>{{ topic.genre }}</span>
+          </div>
+          <div class="meta-item">
             <span class="meta-label">受众：</span>
             <span>{{ topic.target_audience }}</span>
           </div>
@@ -90,13 +102,23 @@ async function saveEdit() {
             <span class="meta-label">钩子：</span>
             <span>{{ topic.hook }}</span>
           </div>
+          <div class="meta-item">
+            <span class="meta-label">篇幅：</span>
+            <span>{{ topic.word_count }}</span>
+          </div>
+          <div class="meta-item" v-if="platformsList.length">
+            <span class="meta-label">平台：</span>
+            <span>{{ platformsList.join('、') }}</span>
+          </div>
         </div>
 
         <div class="topic-score">
           <span class="score-label">AI 评分：</span>
-          <Rate :value="Math.round(topic.score / 20)" disabled allow-half />
+          <Rate :value="Math.round((topic.score ?? 0) / 20)" disabled allow-half />
           <span class="score-value">{{ topic.score }}分</span>
         </div>
+
+        <p v-if="topic.reasoning" class="topic-reasoning">{{ topic.reasoning }}</p>
       </div>
     </template>
 
@@ -113,6 +135,10 @@ async function saveEdit() {
             <Input v-model:value="editData.theme" />
           </div>
           <div class="form-item">
+            <label>题材</label>
+            <Input v-model:value="editData.genre" />
+          </div>
+          <div class="form-item">
             <label>目标受众</label>
             <Input v-model:value="editData.target_audience" />
           </div>
@@ -123,6 +149,10 @@ async function saveEdit() {
           <div class="form-item">
             <label>钩子</label>
             <Input v-model:value="editData.hook" />
+          </div>
+          <div class="form-item">
+            <label>篇幅</label>
+            <Input v-model:value="editData.word_count" />
           </div>
         </div>
         <div class="form-item">
@@ -205,6 +235,15 @@ async function saveEdit() {
 .score-value {
   font-weight: 600;
   color: var(--color-primary);
+}
+
+.topic-reasoning {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-light);
+  line-height: 1.6;
 }
 
 .edit-form {

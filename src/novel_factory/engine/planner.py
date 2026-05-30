@@ -114,12 +114,33 @@ def _parse_proposals(response: str) -> list[dict]:
             raise ValueError(f"期望列表，得到 {type(proposals)}")
 
         for p in proposals:
-            for field in ["title", "premise", "score"]:
+            # 确保必填字段存在
+            defaults = {
+                "title": "未命名",
+                "logline": "",
+                "theme": "",
+                "genre": "",
+                "target_audience": "",
+                "conflict": "",
+                "hook": "",
+                "platforms": [],
+                "word_count": "",
+                "score": 50,
+                "reasoning": "",
+            }
+            for field, default_val in defaults.items():
                 if field not in p:
-                    p[field] = "未设定" if field != "score" else 5
+                    p[field] = default_val
+            # 评分规范化
             if not isinstance(p["score"], (int, float)):
-                p["score"] = 5
-            p["score"] = max(1, min(10, p["score"]))
+                p["score"] = 50
+            # 兼容旧格式 1-10 分 -> 1-100 分
+            if p["score"] <= 10:
+                p["score"] = round(p["score"] * 10)
+            p["score"] = max(1, min(100, p["score"]))
+            # platforms 规范化
+            if isinstance(p["platforms"], str):
+                p["platforms"] = [p["platforms"]]
 
         proposals.sort(key=lambda x: x.get("score", 0), reverse=True)
         logger.info("生成了 %d 个选题方案", len(proposals))

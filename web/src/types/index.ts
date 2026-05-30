@@ -29,7 +29,9 @@ export interface Project {
   status: ProjectStatus
   inspiration: string
   platform: string
+  platforms?: string[]
   word_count_target: number
+  target_words?: number
   current_stage: PipelineStage
   created_at: string
   updated_at: string
@@ -37,17 +39,48 @@ export interface Project {
   book_synopsis?: string
   book_tags?: string[]
   book_category?: string
+  [key: string]: any
 }
 
-/** 创建项目参数 */
+/** 创建项目参数 — 对应后端 ProjectCreate */
 export interface CreateProjectParams {
-  inspiration: string
-  platform: string
-  word_count_target: number
-  genre: string
-  sub_genre?: string
-  character_presets?: CharacterPreset[]
-  world_constraints?: string
+  // Level 1: 必填
+  premise: string
+  platforms: string[]
+  length_type: 'short' | 'medium' | 'long' | 'comic'
+  // Level 2: 选填
+  genre_major?: string
+  genre_minor?: string
+  target_audience?: string
+  tone?: string
+  // Level 3: 选填
+  protagonist_name?: string
+  protagonist_desc?: string
+  antagonist_name?: string
+  antagonist_desc?: string
+  has_romance?: string
+  romance_desc?: string
+  supporting_count?: number
+  // Level 4: 选填
+  world_setting?: string
+  world_custom?: string
+  reference_works?: string
+  forbidden_elements?: string[]
+  // Level 5: 选填
+  target_words?: number
+  target_chapters?: number
+  chapter_word_range?: number[]
+  climax_density?: string
+  climax_interval?: number
+  foreshadow_count?: number
+  model_provider?: string
+  style_sample?: string
+  // 书籍元数据（可选）
+  book_title?: string
+  book_synopsis?: string
+  book_tags?: string[]
+  book_category?: string
+  // 生成策略
   generation_strategy?: GenerationStrategy
 }
 
@@ -55,14 +88,18 @@ export interface CreateProjectParams {
 export interface TopicPlan {
   id: string
   project_id: string
-  title: string
-  logline: string
-  theme: string
-  target_audience: string
-  conflict: string
-  hook: string
-  score: number
-  selected: boolean
+  title: string           // 书名
+  logline: string         // 一句话梗概
+  theme: string           // 主题/立意
+  genre: string           // 题材类型
+  target_audience: string // 目标读者
+  conflict: string        // 核心冲突
+  hook: string            // 卖点/钩子
+  platforms: string[]     // 推荐平台
+  word_count: string      // 建议篇幅
+  score: number           // AI评分 (1-100)
+  reasoning: string       // 评分理由
+  selected: boolean       // 是否被选中
 }
 
 /** 世界观设定 */

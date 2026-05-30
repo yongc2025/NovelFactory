@@ -171,56 +171,83 @@ class ProjectListItem(BaseModel):
     created_at: str | None = None
 
 
+class StageStatus(BaseModel):
+    """单个阶段状态"""
+    stage: str
+    status: str = "pending"  # pending/running/completed/failed/waiting_confirm
+    progress: float = 0.0
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+
+
 class PipelineStatus(BaseModel):
     """流水线状态"""
     project_id: str
-    current_stage: str | None = None       # 当前阶段名称
-    current_stage_label: str | None = None  # 当前阶段中文名
-    progress_percent: float = 0.0           # 进度百分比 0-100
-    total_stages: int = 7                   # 总阶段数
-    completed_stages: int = 0               # 已完成阶段数
-    needs_confirmation: bool = False        # 是否需要人工介入
-    status: str = "idle"                    # idle/running/confirming/complete/error
-    error: str | None = None                # 错误信息
+    current_stage: str | None = None
+    stages: list[StageStatus] = []
+    started_at: str | None = None
     updated_at: str | None = None
+
+    # 保留后端内部使用的扁平字段（可选）
+    current_stage_label: str | None = None
+    progress_percent: float = 0.0
+    total_stages: int = 7
+    completed_stages: int = 0
+    needs_confirmation: bool = False
+    status: str = "idle"
+    error: str | None = None
 
 
 class ChapterResponse(BaseModel):
     """章节响应（场景 + 正文）"""
     project_id: str
     chapter_num: int
+    chapter_number: int | None = None  # 前端别名
     title: str | None = None
-    scenes: dict[str, Any] | None = None    # 场景细纲
-    draft: str | None = None                # 正文 Markdown
+    scenes: dict[str, Any] | None = None
+    draft: str | None = None
+    content: str | None = None  # 前端别名
+    word_count: int = 0
+    status: str = "draft"
+
+    def model_post_init(self, __context) -> None:
+        # 兼容前端字段名
+        if self.chapter_number is None:
+            self.chapter_number = self.chapter_num
+        if self.content is None:
+            self.content = self.draft or ""
+        if self.word_count == 0:
+            self.word_count = len(self.content.replace("\s", "")) if self.content else 0
 
 
 class CharacterResponse(BaseModel):
     """角色响应"""
     project_id: str
-    characters: dict[str, Any]
+    characters: dict[str, Any] | list[dict[str, Any]]
 
 
 class ReviewResponse(BaseModel):
     """审校报告响应"""
     project_id: str
-    review: dict[str, Any]
+    review: dict[str, Any] | list[dict[str, Any]]
 
 
 class WorldSettingResponse(BaseModel):
     """世界观响应"""
     project_id: str
-    world: dict[str, Any]
+    world: dict[str, Any] | list[dict[str, Any]]
 
 
 class TopicResponse(BaseModel):
     """选题方案响应"""
     project_id: str
-    topic: dict[str, Any]
+    topic: dict[str, Any] | list[dict[str, Any]]
 
 
 class BookMetadata(BaseModel):
     """书籍元数据响应"""
-    title: str
+    title: str = ""
     title_candidates: list[str] = []  # 5个候选书名
     synopsis_short: str = ""   # 50字简介
     synopsis_medium: str = ""  # 150字简介
@@ -233,13 +260,14 @@ class BookMetadata(BaseModel):
 class OutlineResponse(BaseModel):
     """大纲响应"""
     project_id: str
-    outline: dict[str, Any]
+    outline: dict[str, Any] | list[dict[str, Any]]
 
 
 class ConfirmRequest(BaseModel):
     """确认/编辑/重新生成请求"""
-    action: str = Field(..., description="操作: adopt/edit/regenerate")
+    action: str = Field(..., description="操作: adopt/edit/regenerate/approve")
     edits: dict[str, Any] | None = Field(None, description="编辑内容（action=edit 时使用）")
+    stage: str | None = Field(None, description="指定阶段（可选，避免后端推断错误）")
 
 
 class ConfigResponse(BaseModel):
