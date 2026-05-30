@@ -146,7 +146,7 @@ const collapseItems = computed(() => {
   if (!props.outline) return []
   return props.outline.chapters.map((ch, i) => ({
     key: String(i),
-    label: `第${ch.chapter_number}章 ${ch.title}`,
+    label: ch.title?.startsWith('第') ? ch.title : `第${ch.chapter_number}章 ${ch.title}`,
     children: ch,
   }))
 })
@@ -185,7 +185,7 @@ defineExpose({ startEdit, cancelEdit, editing })
           <Collapse.Panel
             v-for="(ch, index) in outline.chapters"
             :key="index"
-            :header="`第${ch.chapter_number}章 ${ch.title}`"
+            :header="ch.title?.startsWith('第') ? ch.title : `第${ch.chapter_number}章 ${ch.title}`"
           >
             <template v-if="editingIndex === index && editForm">
               <div class="edit-form">

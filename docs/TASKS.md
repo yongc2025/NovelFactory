@@ -7,6 +7,8 @@
 | ID | Slug | 状态 | 优先级 | 目标 |
 |---:|---|---|---|---|
 | 0007 | process-realignment | 🟢 进行中 | P0 | 审计并回正任务包驱动开发流程 |
+| 0009 | project-detail-action-bar-polish | ✅ 完成 | P0 | 修复详情页顶部操作栏行为与按钮样式 |
+| 0010 | world-generation-contract-repair | ✅ 完成 | P0 | 修复世界观生成与前端展示契约 |
 | 0004 | cover-generation | 🟡 待开始 | P0 | 封面生成（AI 绘图） |
 | 0005 | publish-packaging | 🟡 待开始 | P0 | 发布打包（TXT/图文/视频导出） |
 | 0006 | platform-taxonomy | 🟡 待开始 | P0 | 番茄/小红书分类体系对接 |

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 async def design_characters(
     project_id: str,
-    world: list[dict],
+    world: list[dict] | dict,
     params: dict | None = None,
 ) -> list[dict]:
     """
@@ -29,10 +29,7 @@ async def design_characters(
     params = params or {}
     logger.info("开始设计角色，项目: %s", project_id)
 
-    world_summary = "\n".join(
-        f"- {ws.get('category', '')}: {ws.get('content', '')[:100]}"
-        for ws in world
-    )
+    world_summary = _format_world_summary(world)
 
     # 构建角色约束
     constraints = []
@@ -110,3 +107,23 @@ def _parse_characters(response: str) -> list[dict]:
     except (json.JSONDecodeError, IndexError, ValueError) as e:
         logger.error("解析角色失败: %s", e)
         raise ValueError(f"LLM 返回的 JSON 格式错误: {e}") from e
+
+
+def _format_world_summary(world: list[dict] | dict) -> str:
+    """将新旧世界观结构格式化为角色生成可读摘要。"""
+    if isinstance(world, dict):
+        parts = [
+            ("时代背景", world.get("era")),
+            ("地理环境", world.get("geography")),
+            ("力量体系", world.get("power_system")),
+            ("社会结构", world.get("social_structure")),
+            ("关键地点", "；".join(str(item) for item in world.get("key_locations", []))),
+            ("世界规则", "；".join(str(item) for item in world.get("rules", []))),
+            ("约束条件", "；".join(str(item) for item in world.get("constraints", []))),
+        ]
+        return "\n".join(f"- {label}: {value}" for label, value in parts if value)
+
+    return "\n".join(
+        f"- {ws.get('category', '')}: {str(ws.get('content', ''))[:100]}"
+        for ws in world
+    )

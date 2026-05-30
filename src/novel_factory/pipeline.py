@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from rich.console import Console
@@ -16,6 +17,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from novel_factory.db.project_store import ProjectStore
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -257,7 +260,8 @@ class NovelPipeline:
             proposals = await generate_proposals(inspiration, genre_hint, params)
             if not proposals:
                 proposals = [await self._placeholder_topic(inspiration, genre_hint)]
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             proposals = [await self._placeholder_topic(inspiration, genre_hint)]
         # 给每个方案注入 id 和 project_id
         for i, p in enumerate(proposals):
@@ -273,7 +277,8 @@ class NovelPipeline:
         try:
             from novel_factory.engine.worldbuilder import build_world
             result = await build_world(project_id, topic, params)
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_world(topic)
         self.store.save_world(project_id, result)
         self.store.update_project_status(project_id, "world_done")
@@ -284,7 +289,8 @@ class NovelPipeline:
         try:
             from novel_factory.engine.character import design_characters
             result = await design_characters(project_id, world, params)
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_characters(topic, world)
         self.store.save_characters(project_id, result)
         self.store.update_project_status(project_id, "characters_done")
@@ -295,9 +301,10 @@ class NovelPipeline:
         try:
             from novel_factory.engine.outliner import generate_outline
             char_list = characters if isinstance(characters, list) else []
-            world_list = world if isinstance(world, list) else []
-            result = await generate_outline(project_id, topic, world_list, char_list, target_chapters, params)
-        except Exception:
+            world_context = world if isinstance(world, (dict, list)) else {}
+            result = await generate_outline(project_id, topic, world_context, char_list, target_chapters, params)
+        except Exception as e:
+            logger.error("大纲生成失败，使用占位数据: %s", e)
             result = await self._placeholder_outline(topic, target_chapters)
         self.store.save_outline(project_id, result)
         self.store.update_project_status(project_id, "outlined")
@@ -308,7 +315,8 @@ class NovelPipeline:
         try:
             from novel_factory.engine.metadata import generate_metadata
             result = await generate_metadata(project_id, topic, outline, characters, params)
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_metadata(topic)
         self.store.save_metadata(project_id, result)
         self.store.update_project_status(project_id, "metadata_done")
@@ -319,7 +327,8 @@ class NovelPipeline:
         try:
             from novel_factory.engine.scene import plan_scenes
             result = await plan_scenes(project_id, chapter)
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_scene(chapter)
         return result
 
@@ -329,7 +338,8 @@ class NovelPipeline:
             from novel_factory.engine.writer import write_scene
             char_list = characters if isinstance(characters, list) else []
             result = await write_scene(project_id, chapter, scene, char_list, params=params)
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_draft(chapter)
         return result
 
@@ -349,7 +359,8 @@ class NovelPipeline:
                 result["total_chapters"] = len(drafts) if isinstance(drafts, list) else 1
             else:
                 result = await self._placeholder_review(drafts)
-        except Exception:
+        except Exception as e:
+            logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_review(drafts)
         self.store.save_review(project_id, result)
         self.store.update_project_status(project_id, "reviewed")
@@ -375,7 +386,15 @@ class NovelPipeline:
         }
 
     async def _placeholder_world(self, topic: dict) -> dict:
-        return [{"category": "时代背景", "content": "现代都市"}, {"category": "核心规则", "content": "重生者拥有前世记忆"}]
+        return {
+            "era": "现代都市，主线发生在高度商业化但阶层分化明显的城市环境中。",
+            "geography": "核心舞台由老城区、新兴商圈与资本控制的产业园组成，不同空间承载不同利益集团。",
+            "power_system": "主角掌握前世记忆与信息差，所有优势都必须通过资源整合、交易谈判和风险判断兑现。",
+            "social_structure": "社会由资本方、平台方、地方势力与普通劳动者构成，向上流动困难但并非完全封闭。",
+            "key_locations": ["老城区据点", "新兴商圈", "产业园"],
+            "rules": ["信息差只能带来机会，不能直接带来胜利", "每次商业扩张都会触动既得利益", "资源垄断必须面对监管与反噬"],
+            "constraints": ["资金有限", "信任需要逐步建立", "过早暴露优势会引来围剿"],
+        }
 
     async def _placeholder_characters(self, topic: dict, world: dict) -> list:
         return [{"name": "待定", "role": "protagonist", "personality": "隐忍、果断"}]

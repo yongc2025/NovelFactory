@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 async def generate_outline(
     project_id: str,
     topic: dict,
-    world: list[dict],
+    world: list[dict] | dict,
     characters: list[dict],
     target_chapters: int = 10,
     params: dict | None = None,
@@ -39,10 +39,7 @@ async def generate_outline(
         f"- {c.get('name', '未知')}: {c.get('role', '')}, {c.get('personality', '')}"
         for c in characters
     )
-    world_summary = "\n".join(
-        f"- {ws.get('category', '')}: {ws.get('content', '')[:80]}"
-        for ws in world
-    )
+    world_summary = _format_world_summary(world)
 
     # 构建节奏约束
     rhythm_parts = []
@@ -80,7 +77,7 @@ async def generate_outline(
         {"role": "user", "content": user_prompt},
     ]
 
-    response = await complete(messages=messages, role="outliner", temperature=0.7, max_tokens=8192)
+    response = await complete(messages=messages, role="outliner", temperature=0.7, max_tokens=16384)
 
     return _parse_outline(response, target_chapters)
 
@@ -112,3 +109,23 @@ def _parse_outline(response: str, target_chapters: int) -> dict:
     except (json.JSONDecodeError, IndexError, ValueError) as e:
         logger.error("解析大纲失败: %s", e)
         raise ValueError(f"LLM 返回的 JSON 格式错误: {e}") from e
+
+
+def _format_world_summary(world: list[dict] | dict) -> str:
+    """将新旧世界观结构格式化为大纲生成可读摘要。"""
+    if isinstance(world, dict):
+        parts = [
+            ("时代背景", world.get("era")),
+            ("地理环境", world.get("geography")),
+            ("力量体系", world.get("power_system")),
+            ("社会结构", world.get("social_structure")),
+            ("关键地点", "；".join(str(item) for item in world.get("key_locations", []))),
+            ("世界规则", "；".join(str(item) for item in world.get("rules", []))),
+            ("约束条件", "；".join(str(item) for item in world.get("constraints", []))),
+        ]
+        return "\n".join(f"- {label}: {value}" for label, value in parts if value)
+
+    return "\n".join(
+        f"- {ws.get('category', '')}: {str(ws.get('content', ''))[:80]}"
+        for ws in world
+    )

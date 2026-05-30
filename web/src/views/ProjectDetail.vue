@@ -104,6 +104,8 @@ const isCurrentStageWaitingConfirm = computed(() => {
   return stageStatus === 'waiting_confirm' || (store.pipelineStatus?.status === 'confirming' && store.pipelineStatus?.current_stage === stage)
 })
 const shouldShowStageConfirm = computed(() => activeTab.value !== 'overview' && isCurrentStageWaitingConfirm.value)
+const canApproveCurrentStage = computed(() => shouldShowStageConfirm.value)
+const approveButtonTitle = computed(() => canApproveCurrentStage.value ? '采用当前阶段内容' : '当前阶段不在待确认状态')
 const stageConfirmName = computed(() => stageNames[activeBackendStage.value ?? ''] || stageNames[activeTab.value] || '')
 const stageConfirmDescription = computed(() => {
   if (activeTab.value === 'topic') {
@@ -204,9 +206,7 @@ function getNextTabKey(tab: string): string | null {
 }
 
 async function runStageInternal(stage: string, feedback?: string) {
-  console.log('[runStageInternal] 调用 runStage:', stage, feedback ? '带feedback' : '')
   await store.runStage(projectId.value, stage, feedback)
-  console.log('[runStageInternal] runStage 完成，开始轮询')
   const status = await waitForStageComplete(projectId.value, stage)
   if (!status) {
     throw new Error('阶段生成超时')
@@ -214,9 +214,7 @@ async function runStageInternal(stage: string, feedback?: string) {
   if (status.status === 'failed') {
     throw new Error(status.error || '阶段生成失败')
   }
-  console.log('[runStageInternal] 阶段完成，加载数据:', stage)
   await loadStageData(stage)
-  console.log('[runStageInternal] 数据加载完成:', stage)
 }
 
 // 运行阶段
@@ -224,13 +222,10 @@ async function handleRunStage(stage: string) {
   if (stageActionLoading.value) return
   stageActionLoading.value = true
   stageActionText.value = `正在生成${stageNames[stage] || '当前阶段'}...`
-  console.log('[handleRunStage] 开始:', stage)
   try {
     await runStageInternal(stage)
-    console.log('[handleRunStage] 完成:', stage)
     message.success('生成完成')
   } catch (error: any) {
-    console.error('[handleRunStage] 失败:', stage, error)
     message.error(error.message || '生成失败')
   } finally {
     stageActionLoading.value = false
@@ -242,6 +237,10 @@ async function handleRunStage(stage: string) {
 async function handleStageConfirm(action: ConfirmAction, feedback?: string) {
   const stage = activeBackendStage.value
   if (!stage || stageActionLoading.value) return
+  if (action === 'approve' && !canApproveCurrentStage.value) {
+    message.warning('当前阶段不在待确认状态，暂不能采用')
+    return
+  }
 
   stageActionLoading.value = true
   stageActionText.value = action === 'regenerate' ? `正在重新生成${stageNames[stage]}...`
@@ -439,7 +438,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><BulbOutlined /> 选题方案</span>
               <Space>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('topic')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('topic')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -476,16 +475,16 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><GlobalOutlined /> 世界观设定</span>
               <Space>
-                <Button v-if="store.worldSetting && shouldShowStageConfirm" class="btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
+                <Button v-if="store.worldSetting" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button v-if="store.worldSetting && worldPanelRef?.editing" class="btn-edit" @click="worldPanelRef?.cancelEdit()">
+                <Button v-if="store.worldSetting && worldPanelRef?.editing" class="stage-action-button btn-cancel" @click="worldPanelRef?.cancelEdit()">
                   <CloseOutlined /> 取消
                 </Button>
-                <Button v-if="store.worldSetting && !worldPanelRef?.editing" class="btn-edit" @click="worldPanelRef?.startEdit()">
+                <Button v-if="store.worldSetting && !worldPanelRef?.editing" class="stage-action-button btn-edit" @click="worldPanelRef?.startEdit()">
                   <EditOutlined /> 编辑
                 </Button>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('world')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('world')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -530,10 +529,10 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><TeamOutlined /> 角色列表</span>
               <Space>
-                <Button v-if="store.characters.length && shouldShowStageConfirm" class="btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
+                <Button v-if="store.characters.length" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('character')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('character')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -573,16 +572,16 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><FileTextOutlined /> 大纲编辑</span>
               <Space>
-                <Button v-if="store.outline && shouldShowStageConfirm" class="btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
+                <Button v-if="store.outline" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button v-if="store.outline && outlineEditorRef?.editing" class="btn-edit" @click="outlineEditorRef?.cancelEdit()">
+                <Button v-if="store.outline && outlineEditorRef?.editing" class="stage-action-button btn-cancel" @click="outlineEditorRef?.cancelEdit()">
                   <CloseOutlined /> 取消
                 </Button>
-                <Button v-if="store.outline && !outlineEditorRef?.editing" class="btn-edit" @click="outlineEditorRef?.startEdit()">
+                <Button v-if="store.outline && !outlineEditorRef?.editing" class="stage-action-button btn-edit" @click="outlineEditorRef?.startEdit()">
                   <EditOutlined /> 编辑
                 </Button>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('outline')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('outline')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -620,10 +619,10 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><ReadOutlined /> 书籍元数据</span>
               <Space>
-                <Button v-if="store.metadata && shouldShowStageConfirm" class="btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
+                <Button v-if="store.metadata" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('metadata')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('metadata')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -661,10 +660,10 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><ReadOutlined /> 正文阅读</span>
               <Space>
-                <Button v-if="store.currentChapter && shouldShowStageConfirm" class="btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
+                <Button v-if="store.currentChapter" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('draft')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('draft')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -703,10 +702,10 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><CheckCircleOutlined /> 审校报告</span>
               <Space>
-                <Button v-if="store.reviewReport && shouldShowStageConfirm" class="btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
+                <Button v-if="store.reviewReport" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button type="primary" :loading="stageActionLoading" @click="handleRunStage('review')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('review')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -861,8 +860,9 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
   justify-content: space-between;
   margin-bottom: 16px;
   padding: 10px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #334155 0%, #475569 100%);
   border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
 }
 
 .stage-top-title {
@@ -875,24 +875,63 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
 }
 
 /* 按钮样式统一 */
+.stage-action-button {
+  min-width: 82px;
+  height: 32px;
+  border-radius: 6px;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
+.stage-action-button:disabled {
+  color: rgba(255, 255, 255, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: none;
+}
+
 .btn-adopt {
-  color: #722ed1 !important;
-  border-color: #722ed1 !important;
-  background: rgba(114, 46, 209, 0.06) !important;
+  color: #135200 !important;
+  border-color: #b7eb8f !important;
+  background: #f6ffed !important;
 }
 .btn-adopt:hover {
-  color: #9254de !important;
-  border-color: #9254de !important;
+  color: #237804 !important;
+  border-color: #95de64 !important;
+  background: #d9f7be !important;
 }
 
 .btn-edit {
-  color: #1890ff !important;
-  border-color: #1890ff !important;
-  background: rgba(24, 144, 255, 0.06) !important;
+  color: #0958d9 !important;
+  border-color: #91caff !important;
+  background: #e6f4ff !important;
 }
 .btn-edit:hover {
-  color: #40a9ff !important;
-  border-color: #40a9ff !important;
+  color: #003eb3 !important;
+  border-color: #69b1ff !important;
+  background: #bae0ff !important;
+}
+
+.btn-cancel {
+  color: #595959 !important;
+  border-color: #d9d9d9 !important;
+  background: #ffffff !important;
+}
+.btn-cancel:hover {
+  color: #262626 !important;
+  border-color: #bfbfbf !important;
+  background: #f5f5f5 !important;
+}
+
+.btn-generate {
+  color: #3f2a00 !important;
+  border-color: #ffd666 !important;
+  background: #ffd666 !important;
+}
+.btn-generate:hover {
+  color: #2b1d00 !important;
+  border-color: #ffc53d !important;
+  background: #ffc53d !important;
 }
 
 /* 空状态框架 */
@@ -940,3 +979,4 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
   }
 }
 </style>
+

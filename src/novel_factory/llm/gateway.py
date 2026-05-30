@@ -37,7 +37,7 @@ ROLE_MODEL_MAP = {
     "default": "flash",        # 默认
 }
 
-DEFAULT_TIMEOUT = 120
+DEFAULT_TIMEOUT = 300  # 5 minutes for large generation tasks
 
 # 用量统计
 _usage_log: list[dict] = []

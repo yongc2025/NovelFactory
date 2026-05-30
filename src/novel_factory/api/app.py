@@ -835,18 +835,31 @@ def _normalize_world(world_list: list) -> dict:
     """将后端 [{category, content}] 格式转为前端期望的扁平对象"""
     category_map = {
         "时代背景": "era",
+        "地理环境": "geography",
         "核心规则": "power_system",
+        "力量体系": "power_system",
         "势力分布": "geography",
         "社会体系": "social_structure",
+        "社会结构": "social_structure",
     }
     result = {v: "" for v in category_map.values()}
     result["key_locations"] = []
     result["rules"] = []
     result["constraints"] = []
     for item in world_list:
-        key = category_map.get(item.get("category", ""))
+        category = str(item.get("category", ""))
+        content = str(item.get("content", ""))
+        key = category_map.get(category)
         if key:
-            result[key] = item.get("content", "")
+            result[key] = content
+        if "地点" in category or "势力" in category:
+            result["key_locations"].append(content)
+        if "规则" in category or "体系" in category:
+            result["rules"].append(content)
+        if "约束" in category or "限制" in category or "禁忌" in category:
+            result["constraints"].append(content)
+    if not result["constraints"] and result.get("social_structure"):
+        result["constraints"].append(result["social_structure"])
     return result
 
 

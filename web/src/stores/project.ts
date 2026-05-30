@@ -181,9 +181,11 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getWorld(id)
-      const data = res.data.data ?? res.data
+      const data = (res.data.data ?? res.data) as WorldSetting | { world?: WorldSetting } | null
       // API 返回 { project_id, world: {...} }，提取 world 字段
-      const world = data?.world ?? data
+      const world = data && Object.prototype.hasOwnProperty.call(data, 'world')
+        ? (data as { world?: WorldSetting }).world
+        : data as WorldSetting | null
       worldSetting.value = (world && Object.keys(world).length > 0) ? world : null
     } catch (e: any) {
       error.value = e.message
@@ -209,9 +211,11 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getOutline(id)
-      const data = res.data.data ?? res.data
+      const data = (res.data.data ?? res.data) as Outline | { outline?: Outline } | null
       // API 返回 { project_id, outline: {...} }，提取 outline 字段
-      const outlineData = data?.outline ?? data
+      const outlineData = data && Object.prototype.hasOwnProperty.call(data, 'outline')
+        ? (data as { outline?: Outline }).outline
+        : data as Outline | null
       outline.value = (outlineData && Object.keys(outlineData).length > 0) ? outlineData : null
     } catch (e: any) {
       error.value = e.message
@@ -237,9 +241,11 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     try {
       const res = await api.getReview(id)
-      const data = res.data.data ?? res.data
+      const data = (res.data.data ?? res.data) as ReviewReport | { review?: ReviewReport } | null
       // API 返回 { project_id, review: {...} }，提取 review 字段
-      const reviewData = data?.review ?? data
+      const reviewData = data && Object.prototype.hasOwnProperty.call(data, 'review')
+        ? (data as { review?: ReviewReport }).review
+        : data as ReviewReport | null
       reviewReport.value = (reviewData && Object.keys(reviewData).length > 0) ? reviewData : null
     } catch (e: any) {
       error.value = e.message

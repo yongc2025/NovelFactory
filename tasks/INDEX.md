@@ -10,6 +10,8 @@
 | 0006 | platform-taxonomy | 🟡 待开始 | P0 | 番茄/小红书分类体系对接 | `tasks/0006-platform-taxonomy/` |
 | 0007 | process-realignment | 🟢 进行中 | P0 | 审计并回正任务包驱动开发流程 | `tasks/0007-process-realignment/` |
 | 0008 | frontend-api-contract-repair | ✅ 完成 | P0 | 修复详情页阶段确认与前后端契约 | `tasks/0008-frontend-api-contract-repair/` |
+| 0009 | project-detail-action-bar-polish | ✅ 完成 | P0 | 修复详情页顶部操作栏行为与按钮样式 | `tasks/0009-project-detail-action-bar-polish/` |
+| 0010 | world-generation-contract-repair | ✅ 完成 | P0 | 修复世界观生成与前端展示契约 | `tasks/0010-world-generation-contract-repair/` |
 
 ## 执行顺序
 
