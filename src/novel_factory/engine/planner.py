@@ -74,6 +74,8 @@ async def generate_proposals(
         context_parts.append(f"参考作品：{params['reference_works']}")
     if params.get("forbidden_elements"):
         context_parts.append(f"禁忌元素：{', '.join(params['forbidden_elements'])}")
+    if params.get("feedback"):
+        context_parts.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整选题方案。")
 
     genre_text = "\n".join(context_parts[1:])  # 除灵感外的所有上下文
 

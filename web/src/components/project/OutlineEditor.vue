@@ -29,6 +29,8 @@ const props = defineProps<{
   outline: Outline | null
   loading?: boolean
   projectId: string
+  showConfirm?: boolean
+  hideActions?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -148,6 +150,8 @@ const collapseItems = computed(() => {
     children: ch,
   }))
 })
+
+defineExpose({ startEdit, cancelEdit, editing })
 </script>
 
 <template>
@@ -163,10 +167,10 @@ const collapseItems = computed(() => {
           <BookOutlined />
           共 {{ outline.total_chapters }} 章
         </span>
-        <Space>
+        <Space v-if="!hideActions">
           <template v-if="!editing">
             <Button @click="startEdit"><EditOutlined /> 编辑全部</Button>
-            <Button type="primary" @click="emit('confirm')">✅ 采用</Button>
+            <Button v-if="showConfirm !== false" type="primary" @click="emit('confirm')">✅ 采用</Button>
           </template>
           <template v-else>
             <Button @click="cancelEdit"><CloseOutlined /> 取消</Button>

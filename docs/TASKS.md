@@ -18,19 +18,20 @@
 | 0001 | repair-ci-lint-and-paths | ✅ Done | P0 | 修复迁移后 CI lint 失效 | 2026-05-28 |
 | 0002 | book-metadata-generation | ✅ Done | P0 | 书名+简介+标签+分类自动生成 | 2026-05-28 |
 | 0003 | inline-editing | ✅ Done | P0 | 二次编辑功能 | 2026-05-28 |
+| 0008 | frontend-api-contract-repair | ✅ Done | P0 | 修复详情页阶段确认与前后端契约 | 2026-05-30 |
 | — | coding-standards | ✅ Done | P1 | 编码规范文档 + AGENTS.md 规则 | 2026-05-29 |
 | — | docs-alignment | ✅ Done | P1 | 设计文档与实现对齐 | 2026-05-29 |
 
 ## 执行顺序（规划）
 
 ```
-0007 (流程回正) → 0008 (前后端契约修复，待创建) → 0006 (分类体系) → 0004 (封面) → 0005 (发布打包)
+0007 (流程回正) → 0008 (前后端契约修复) → 0006 (分类体系) → 0004 (封面) → 0005 (发布打包)
 ```
 
 ## 当前流程回正结论
 
-详见 `docs/process-realignment-audit.md`。在 0007 完成前，不继续叠加新功能；下一步应先创建
-`0008-frontend-api-contract-repair`，修复前端与后端 API/数据契约偏离。
+详见 `docs/process-realignment-audit.md`。`0008-frontend-api-contract-repair` 已完成；下一步建议补齐
+`0009-task-bundle-normalization`，复核 0001-0006 的任务包结构与真实状态。
 
 ## 未列入 Task 的设计需求（来自系统设计文档）
 

@@ -515,7 +515,7 @@ async def pipeline_plan(project_id: str, background_tasks: BackgroundTasks):
 
 
 @app.post("/api/projects/{project_id}/pipeline/stage/{stage}")
-async def pipeline_stage(project_id: str, stage: str, background_tasks: BackgroundTasks):
+async def pipeline_stage(project_id: str, stage: str, background_tasks: BackgroundTasks, body: dict | None = None):
     """运行单个阶段"""
     store = get_store()
     project = store.get_project(project_id)
@@ -538,6 +538,13 @@ async def pipeline_stage(project_id: str, stage: str, background_tasks: Backgrou
         "target_chapters": project.get("target_chapters"),
         "target_audience": project.get("target_audience", "male"),
     }
+
+    # 接收 feedback 参数
+    feedback = None
+    if body:
+        feedback = body.get("feedback")
+    if feedback:
+        params["feedback"] = feedback
 
     _run_in_background(_run_single_stage(project_id, stage, params))
     _update_state(project_id, status="running", current_stage=stage,
@@ -732,18 +739,17 @@ async def pipeline_confirm(project_id: str, body: ConfirmRequest):
         _update_state(
             project_id,
             needs_confirmation=False,
-            status="running",
+            status="idle",
             completed_stages=stage_idx + 1,
         )
         return {"message": f"已采用 {current_stage} 阶段结果", "next_stage": STAGES[stage_idx + 1][0] if stage_idx + 1 < len(STAGES) else None}
 
     elif action == "edit":
-        # 编辑：将用户编辑的内容保存到对应阶段
+        # 编辑反馈：设为 idle，由前端触发 runStage(feedback) 来重新生成
         if not body.edits:
             raise HTTPException(status_code=400, detail="edit 操作需要提供 edits 内容")
-        _save_stage_edits(store, project_id, current_stage, body.edits)
-        _update_state(project_id, needs_confirmation=False, status="running")
-        return {"message": f"已保存 {current_stage} 阶段编辑内容"}
+        _update_state(project_id, needs_confirmation=False, status="idle")
+        return {"message": f"已提交反馈，即将重新生成 {current_stage} 阶段", "stage": current_stage, "feedback": body.edits}
 
     elif action == "regenerate":
         # 重新生成：设为 idle，由前端触发 runStage 来真正执行
@@ -921,7 +927,7 @@ async def get_chapter(project_id: str, chapter_num: int):
     chapters = outline.get("chapters", [])
     title = None
     for ch in chapters:
-        if ch.get("chapter_num") == chapter_num:
+        if ch.get("chapter_num", ch.get("chapter_number")) == chapter_num:
             title = ch.get("title")
             break
 

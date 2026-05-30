@@ -9,9 +9,10 @@
 | 0005 | publish-packaging | 🟡 待开始 | P0 | 发布打包（TXT/图文/视频导出） | `tasks/0005-publish-packaging/` |
 | 0006 | platform-taxonomy | 🟡 待开始 | P0 | 番茄/小红书分类体系对接 | `tasks/0006-platform-taxonomy/` |
 | 0007 | process-realignment | 🟢 进行中 | P0 | 审计并回正任务包驱动开发流程 | `tasks/0007-process-realignment/` |
+| 0008 | frontend-api-contract-repair | ✅ 完成 | P0 | 修复详情页阶段确认与前后端契约 | `tasks/0008-frontend-api-contract-repair/` |
 
 ## 执行顺序
 
 ```
-0007 (流程回正) → 0008 (前后端契约修复，待创建) → 0006 (分类体系) → 0004 (封面) → 0005 (发布打包)
+0007 (流程回正) → 0008 (前后端契约修复) → 0006 (分类体系) → 0004 (封面) → 0005 (发布打包)
 ```

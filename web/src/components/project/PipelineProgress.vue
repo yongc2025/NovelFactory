@@ -18,9 +18,9 @@ interface StageConfig {
 const stageConfigs: StageConfig[] = [
   { key: 'topic', label: '选题', role: 'planner' },
   { key: 'world', label: '世界观', role: 'worldbuilder' },
-  { key: 'characters', label: '角色', role: 'character' },
+  { key: 'character', label: '角色', role: 'character' },
   { key: 'outline', label: '大纲', role: 'outliner' },
-  { key: 'chapters', label: '正文', role: 'writer' },
+  { key: 'draft', label: '正文', role: 'writer' },
   { key: 'review', label: '审校', role: 'editor' },
 ]
 

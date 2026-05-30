@@ -18,6 +18,8 @@ const props = defineProps<{
   world: WorldSetting | null
   loading?: boolean
   projectId: string
+  showConfirm?: boolean
+  hideActions?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +77,8 @@ function addConstraint() {
 function removeConstraint(index: number) {
   if (editData.value) editData.value.constraints.splice(index, 1)
 }
+
+defineExpose({ startEdit, cancelEdit, editing })
 </script>
 
 <template>
@@ -85,10 +89,10 @@ function removeConstraint(index: number) {
     </Spin>
     <template v-else-if="world">
       <!-- 操作栏 -->
-      <div class="panel-actions">
+      <div class="panel-actions" v-if="!hideActions">
         <template v-if="!editing">
           <Button @click="startEdit"><EditOutlined /> 编辑</Button>
-          <Button type="primary" @click="emit('confirm')">✅ 采用</Button>
+          <Button v-if="showConfirm !== false" type="primary" @click="emit('confirm')">✅ 采用</Button>
         </template>
         <template v-else>
           <Button @click="cancelEdit"><CloseOutlined /> 取消</Button>

@@ -57,6 +57,8 @@ async def generate_outline(
         rhythm_parts.append(f"内容基调：{params['tone']}")
     if params.get("chapter_word_range"):
         rhythm_parts.append(f"每章字数：{params['chapter_word_range'][0]}-{params['chapter_word_range'][1]}字")
+    if params.get("feedback"):
+        rhythm_parts.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整大纲。")
 
     rhythm_text = "\n".join(rhythm_parts) if rhythm_parts else ""
 

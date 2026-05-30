@@ -53,6 +53,8 @@ async def design_characters(
     if params.get("target_audience") and params["target_audience"] != "general":
         audience = "女频" if params["target_audience"] == "female" else "男频"
         constraints.append(f"目标读者：{audience}")
+    if params.get("feedback"):
+        constraints.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整角色设定。")
 
     constraint_text = "\n".join(constraints) if constraints else "（无特殊约束）"
 

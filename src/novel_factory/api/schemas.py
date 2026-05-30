@@ -205,7 +205,7 @@ class ChapterResponse(BaseModel):
     chapter_num: int
     chapter_number: int | None = None  # 前端别名
     title: str | None = None
-    scenes: dict[str, Any] | None = None
+    scenes: dict[str, Any] | list[dict[str, Any]] | None = None
     draft: str | None = None
     content: str | None = None  # 前端别名
     word_count: int = 0

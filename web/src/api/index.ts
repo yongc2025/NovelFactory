@@ -73,8 +73,8 @@ export function startPipeline(id: string) {
   return http.post<ApiResponse<PipelineStatus>>(`/projects/${id}/pipeline/start`)
 }
 
-export function runStage(projectId: string, stage: string) {
-  return http.post<ApiResponse<void>>(`/projects/${projectId}/pipeline/stage/${stage}`)
+export function runStage(projectId: string, stage: string, feedback?: string) {
+  return http.post<ApiResponse<void>>(`/projects/${projectId}/pipeline/stage/${stage}`, feedback ? { feedback } : undefined)
 }
 
 /** 获取流水线状态 */
@@ -83,8 +83,12 @@ export function getPipelineStatus(id: string) {
 }
 
 /** 确认阶段 */
-export function confirmStage(id: string, action: ConfirmAction, stage?: string) {
-  return http.post<ApiResponse<any>>(`/projects/${id}/pipeline/confirm`, { action, stage })
+export function confirmStage(id: string, action: ConfirmAction, stage?: string, feedback?: string) {
+  return http.post<ApiResponse<any>>(`/projects/${id}/pipeline/confirm`, {
+    action,
+    stage,
+    edits: feedback ? { feedback } : undefined,
+  })
 }
 
 // ========== 内容 API ==========

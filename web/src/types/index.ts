@@ -12,8 +12,12 @@ export type ProjectStatus =
 export type PipelineStage =
   | 'topic'
   | 'world'
+  | 'character'
   | 'characters'
   | 'outline'
+  | 'metadata'
+  | 'scene'
+  | 'draft'
   | 'chapters'
   | 'review'
 
@@ -215,10 +219,17 @@ export interface GenerationStrategy {
 /** 流水线状态 */
 export interface PipelineStatus {
   project_id: string
-  current_stage: PipelineStage
+  current_stage: PipelineStage | null
   stages: StageStatus[]
   started_at: string
   updated_at: string
+  current_stage_label?: string | null
+  progress_percent?: number
+  total_stages?: number
+  completed_stages?: number
+  needs_confirmation?: boolean
+  status?: 'idle' | 'running' | 'confirming' | 'complete' | 'failed' | 'error'
+  error?: string | null
 }
 
 /** 阶段状态 */

@@ -95,6 +95,8 @@ async def generate_metadata(
         user_tags=user_tags,
         user_category=user_category,
     )
+    if params.get("feedback"):
+        user_prompt += f"\n\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整书籍元数据。"
 
     messages = [
         {"role": "system", "content": METADATA_SYSTEM},
