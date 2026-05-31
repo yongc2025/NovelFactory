@@ -81,13 +81,28 @@ async def write_scene(
         audience = "女频读者（注重情感细腻度、角色心理描写）" if params["target_audience"] == "female" else "男频读者（注重爽感、节奏、实力展现）"
         extra_style += f"\n目标读者：{audience}"
 
+    # 0019: 滑动窗口 — 读上一章 draft 末尾作为连接上下文
+    sliding_window = "（无前文）"
+    try:
+        ch_num = chapter.get("chapter_num", 0) if isinstance(chapter, dict) else 0
+        if ch_num and ch_num > 1:
+            from novel_factory.api.deps import get_store
+            store = get_store()
+            prev_draft = store.get_draft(project_id, ch_num - 1)
+            if prev_draft and isinstance(prev_draft, str):
+                tail = prev_draft.strip()[-400:]
+                if tail:
+                    sliding_window = f"【上一章结尾】\n{tail}"
+    except Exception as e:
+        logger.warning("读取滑动窗口失败: %s", e)
+
     system_prompt = render_prompt(
         WRITER_SYSTEM,
         style_instruction=STYLE_INSTRUCTION + extra_style,
         content_red_lines=CONTENT_RED_LINES,
         global_memory=char_info or "（暂无角色信息）",
         recent_summary=prev_summary or "（故事开始）",
-        sliding_window="（无前文）",
+        sliding_window=sliding_window,
         current_task="撰写以下场景的正文",
     )
 
@@ -106,3 +121,75 @@ async def write_scene(
 
     logger.info("正文生成完成，约 %d 字", len(draft))
     return draft
+
+
+async def revise_with_feedback(
+    project_id: str,
+    chapter: dict,
+    original_draft: str,
+    characters: list[dict] | None = None,
+    review_issues: list[dict] | None = None,
+    user_feedback: str = "",
+    params: dict | None = None,
+) -> str:
+    """根据审校意见和用户反馈修改正文
+
+    Args:
+        project_id: 项目 ID
+        chapter: 章节大纲
+        original_draft: 原正文
+        characters: 角色列表
+        review_issues: 审校发现的问题
+        user_feedback: 用户反馈
+        params: 项目参数
+    """
+    params = params or {}
+    logger.info("开始修改正文，章节: %s", chapter.get("title", "未知"))
+
+    char_info = ""
+    if characters:
+        char_info = "\n".join(
+            f"- {c.get('name', '未知')}: {c.get('personality', '')}, 说话风格: {c.get('speaking_style', c.get('voice_style', ''))}"
+            for c in characters
+        )
+
+    issues_text = ""
+    if review_issues:
+        issues_text = "\n".join(
+            f"- [{issue.get('severity', 'warning')}] {issue.get('type', '')}: {issue.get('detail', '')}"
+            for issue in review_issues
+        )
+
+    system_prompt = """你是一位网文作者，负责根据审校意见修改正文。
+
+修改要求：
+1. 针对审校指出的问题逐一修复
+2. 保持角色性格一致性
+3. 保持原文的节奏和风格
+4. 如果用户提供了反馈意见，优先满足用户需求
+5. 不要大幅改变原文结构，只修改有问题的部分
+6. 输出修改后的完整正文"""
+
+    user_prompt = f"""章节：{chapter.get('title', '')}
+核心事件：{chapter.get('core_event', '')}
+
+角色信息：
+{char_info or '（暂无）'}
+
+审校问题：
+{issues_text or '（无）'}
+
+用户反馈：
+{user_feedback or '（无）'}
+
+原正文：
+{original_draft}"""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    revised = await complete(messages=messages, role="writer", temperature=0.7, max_tokens=4096)
+    logger.info("正文修改完成，约 %d 字", len(revised))
+    return revised

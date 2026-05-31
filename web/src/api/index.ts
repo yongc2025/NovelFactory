@@ -13,6 +13,7 @@ import type {
   ReviewReport,
   ConfirmAction,
   BookMetadata,
+  PipelineTask,
 } from '@/types'
 
 const http = axios.create({
@@ -74,7 +75,7 @@ export function startPipeline(id: string) {
 }
 
 export function runStage(projectId: string, stage: string, feedback?: string) {
-  return http.post<ApiResponse<void>>(`/projects/${projectId}/pipeline/stage/${stage}`, feedback ? { feedback } : undefined)
+  return http.post<ApiResponse<PipelineTask> | PipelineTask>(`/projects/${projectId}/pipeline/stage/${stage}`, feedback ? { feedback } : undefined)
 }
 
 /** 获取流水线状态 */
@@ -113,14 +114,58 @@ export function getOutline(id: string) {
   return http.get<ApiResponse<Outline>>(`/projects/${id}/outline`)
 }
 
+export function generateOutlineBatch(projectId: string, batchSize: number) {
+  return http.post<ApiResponse<PipelineTask> | PipelineTask>(`/projects/${projectId}/outline/generate`, { batch_size: batchSize })
+}
+
 /** 获取章节 */
 export function getChapter(id: string, num: number) {
   return http.get<ApiResponse<Chapter>>(`/projects/${id}/chapters/${num}`)
 }
 
+/** 获取某章场景细纲 */
+export function getScene(projectId: string, chNum: number) {
+  return http.get<ApiResponse<any>>(`/projects/${projectId}/scenes/${chNum}`)
+}
+
+/** 更新某章场景细纲 */
+export function updateScene(projectId: string, chNum: number, data: any) {
+  return http.put<ApiResponse<any>>(`/projects/${projectId}/scenes/${chNum}`, data)
+}
+
+/** 获取正文状态（各章是否已生成） */
+export function getDraftStatus(projectId: string) {
+  return http.get<ApiResponse<{ total_chapters: number; generated_count: number; chapters: Array<{ chapter_num: number; title: string; has_draft: boolean; has_scenes: boolean }> }>>(`/projects/${projectId}/drafts/status`)
+}
+
+/** 查询任务状态 */
+export function getTask(taskId: string) {
+  return http.get<ApiResponse<PipelineTask> | PipelineTask>(`/pipeline/tasks/${taskId}`)
+}
+
+/** 取消任务 */
+export function cancelTask(taskId: string) {
+  return http.post<ApiResponse<PipelineTask> | PipelineTask>(`/pipeline/tasks/${taskId}/cancel`)
+}
+
+/** 获取项目当前活跃任务 */
+export function getActiveTask(projectId: string) {
+  return http.get<ApiResponse<PipelineTask> | PipelineTask>(`/projects/${projectId}/pipeline/active-task`)
+}
+
 /** 获取审校报告 */
 export function getReview(id: string) {
   return http.get<ApiResponse<ReviewReport>>(`/projects/${id}/review`)
+}
+
+/** 获取某章审校结果 */
+export function getChapterReview(projectId: string, chNum: number) {
+  return http.get<ApiResponse<any>>(`/projects/${projectId}/review/${chNum}`)
+}
+
+/** 根据审校意见修改正文 */
+export function reviseChapter(projectId: string, chNum: number, data: { feedback?: string; issues?: any[] }) {
+  return http.post<ApiResponse<any>>(`/projects/${projectId}/chapters/${chNum}/revise`, data)
 }
 
 // ========== 元数据 API ==========

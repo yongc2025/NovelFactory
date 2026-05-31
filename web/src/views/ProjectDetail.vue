@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -10,6 +10,13 @@ import {
   Tabs,
   TabPane,
   Spin,
+  Progress,
+  Table,
+  Modal,
+  Popconfirm,
+  InputNumber,
+  Empty,
+  Collapse,
   message,
 } from 'ant-design-vue'
 import {
@@ -20,9 +27,12 @@ import {
   TeamOutlined,
   FileTextOutlined,
   ReadOutlined,
+  DeleteOutlined,
   CheckCircleOutlined,
   EditOutlined,
   CloseOutlined,
+  BlockOutlined,
+  SyncOutlined,
 } from '@ant-design/icons-vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PipelineProgress from '@/components/project/PipelineProgress.vue'
@@ -34,6 +44,7 @@ import MetadataEditor from '@/components/project/MetadataEditor.vue'
 import ChapterReader from '@/components/project/ChapterReader.vue'
 import ReviewReport from '@/components/project/ReviewReport.vue'
 import StageConfirm from '@/components/common/StageConfirm.vue'
+import { useTaskPoller } from '@/composables/useTaskPoller'
 import { useProjectStore } from '@/stores/project'
 import type { ConfirmAction, BookMetadata } from '@/types'
 
@@ -42,16 +53,27 @@ const { Title, Text } = Typography
 const route = useRoute()
 const router = useRouter()
 const store = useProjectStore()
+const taskPoller = useTaskPoller()
 
 const projectId = computed(() => route.params.id as string)
 const activeTab = computed(() => (route.meta.tab as string) || 'overview')
 const stageActionLoading = ref(false)
 const stageActionText = ref('')
-const globalLoading = computed(() => store.loading || stageActionLoading.value)
+const taskLoading = computed(() => taskPoller.isActive.value || taskPoller.isPolling.value)
+const globalLoading = computed(() => store.loading || stageActionLoading.value || taskLoading.value)
+const loadingTip = computed(() => stageActionText.value || taskPoller.statusText.value || '加载中...')
 const currentChapterNum = computed(() => {
   const num = route.params.num
   return num ? parseInt(num as string) : 1
 })
+
+// 大纲表格相关
+const outlinePage = ref(1)
+const outlinePageSize = 10
+const outlineDrawerVisible = ref(false)
+const outlineDrawerChapter = ref<any>(null)
+const outlineBatchDialogVisible = ref(false)
+const outlineBatchSize = ref(10)
 
 // 阶段名称映射
 const stageNames: Record<string, string> = {
@@ -74,18 +96,20 @@ const tabItems = [
   { key: 'world', label: '世界观', icon: GlobalOutlined },
   { key: 'characters', label: '角色列表', icon: TeamOutlined },
   { key: 'outline', label: '大纲编辑', icon: FileTextOutlined },
+  { key: 'scene', label: '场景细纲', icon: BlockOutlined },
   { key: 'metadata', label: '书籍元数据', icon: ReadOutlined },
   { key: 'chapters', label: '正文阅读', icon: ReadOutlined },
   { key: 'review', label: '审校报告', icon: CheckCircleOutlined },
 ]
 
 // 阶段顺序（用于自动切换）
-const tabOrder = ['topic', 'world', 'characters', 'outline', 'metadata', 'chapters', 'review']
+const tabOrder = ['topic', 'world', 'characters', 'outline', 'scene', 'metadata', 'chapters', 'review']
 const tabToStage: Record<string, string> = {
   topic: 'topic',
   world: 'world',
   characters: 'character',
   outline: 'outline',
+  scene: 'scene',
   metadata: 'metadata',
   chapters: 'draft',
   review: 'review',
@@ -114,6 +138,100 @@ const stageConfirmDescription = computed(() => {
   return '请审阅当前阶段内容，确认采用、提交反馈或重新生成。'
 })
 
+// 大纲表格
+const outlineChapters = computed(() => store.outline?.chapters || [])
+// 总章节数：优先用项目参数（生成目标），其次 outline 的 total_chapters，最后兜底当前章节数
+const outlineTotalChapters = computed(() => {
+  const fromProject = (store.currentProject as any)?.target_chapters
+  if (fromProject && fromProject > 0) return fromProject
+  const fromOutline = store.outline?.total_chapters
+  if (fromOutline && fromOutline > 0) return fromOutline
+  return outlineChapters.value.length || 0
+})
+const outlineGeneratedCount = computed(() => outlineChapters.value.length)
+const outlinePagedChapters = computed(() => {
+  const start = (outlinePage.value - 1) * outlinePageSize
+  return outlineChapters.value.slice(start, start + outlinePageSize)
+})
+const outlineColumns = [
+  { title: '序号', key: 'index', width: 60 },
+  { title: '章节标题', dataIndex: 'title', key: 'title', ellipsis: true },
+  { title: '核心事件', dataIndex: 'core_event', key: 'core_event', ellipsis: true },
+  { title: '出场角色', dataIndex: 'characters_present', key: 'characters_present', width: 120 },
+  { title: '操作', key: 'action', width: 140 },
+]
+
+function openOutlineDetail(chapter: any) {
+  outlineDrawerChapter.value = chapter
+  outlineDrawerVisible.value = true
+}
+
+function closeOutlineDetail() {
+  outlineDrawerVisible.value = false
+  outlineDrawerChapter.value = null
+}
+
+async function deleteOutlineChapter(index: number) {
+  const realIndex = (outlinePage.value - 1) * outlinePageSize + index
+  if (!store.outline) return
+  store.outline.chapters.splice(realIndex, 1)
+  // total_chapters 保持不变（代表生成目标，不是当前数量）
+  // 持久化到后端
+  try {
+    const { updateOutline } = await import('@/api')
+    await updateOutline(projectId.value, store.outline)
+  } catch {
+    message.error('删除失败')
+  }
+}
+
+async function deleteAllOutlineChapters() {
+  if (!store.outline || outlineChapters.value.length === 0) return
+  // 保留 total_chapters 作为生成目标
+  store.outline.chapters = []
+  // 持久化到后端
+  try {
+    const { updateOutline } = await import('@/api')
+    await updateOutline(projectId.value, store.outline)
+    message.success('已清空全部大纲')
+  } catch {
+    message.error('清空失败')
+  }
+}
+
+async function handleOutlineBatchGenerate() {
+  const maxRemaining = outlineTotalChapters.value - outlineGeneratedCount.value
+  if (maxRemaining <= 0) {
+    message.info('大纲已全部生成')
+    return
+  }
+  outlineBatchDialogVisible.value = true
+}
+
+async function confirmOutlineBatchGenerate() {
+  const maxRemaining = outlineTotalChapters.value - outlineGeneratedCount.value
+  const batchSize = Math.min(outlineBatchSize.value, maxRemaining)
+  if (batchSize < 1) {
+    message.warning('请输入有效的章节数')
+    return
+  }
+  outlineBatchDialogVisible.value = false
+  stageActionLoading.value = true
+  stageActionText.value = `正在生成第 ${outlineGeneratedCount.value + 1}-${outlineGeneratedCount.value + batchSize} 章大纲...`
+  try {
+    const task = await taskPoller.submitTask(() => store.generateOutlineBatch(projectId.value, batchSize))
+    if (task.status === 'failed') throw new Error(task.error || '大纲生成失败')
+    if (task.status === 'cancelled') throw new Error('大纲生成已取消')
+    await handleTaskComplete('outline')
+    message.success('大纲生成完成')
+  } catch (error: any) {
+    message.error(error.message || '大纲生成失败')
+  } finally {
+    stageActionLoading.value = false
+    stageActionText.value = ''
+  }
+}
+
 function onTabChange(key: string | number) {
   const tabKey = String(key)
   if (tabKey === 'overview') {
@@ -127,6 +245,17 @@ function onTabChange(key: string | number) {
 onMounted(async () => {
   await store.fetchProject(projectId.value)
   await store.fetchPipelineStatus(projectId.value)
+  const activeTask = await store.fetchActiveTask(projectId.value)
+  if (activeTask?.task_id && ['pending', 'running'].includes(activeTask.status)) {
+    taskPoller.activeTask.value = activeTask
+    void taskPoller.pollTask(activeTask.task_id)
+      .then((task) => handleTaskComplete(task.stage || activeBackendStage.value || ''))
+      .catch(() => undefined)
+  }
+})
+
+watch(taskPoller.activeTask, (task) => {
+  store.setActiveTask(task)
 })
 
 // 根据 tab 加载对应数据
@@ -137,6 +266,15 @@ watch([activeTab, currentChapterNum], async ([tab, chapterNum]) => {
     case 'world': await store.fetchWorld(id); break
     case 'characters': await store.fetchCharacters(id); break
     case 'outline': await store.fetchOutline(id); break
+    case 'scene':
+      await store.fetchOutline(id)
+      // 加载所有章节的场景数据
+      if (store.outline?.chapters) {
+        for (const ch of store.outline.chapters) {
+          await loadSceneData(ch.chapter_number)
+        }
+      }
+      break
     case 'metadata': await store.fetchMetadata(id); break
     case 'chapters': await store.fetchChapter(id, chapterNum); break
     case 'review': await store.fetchReview(id); break
@@ -173,30 +311,29 @@ async function handleStartPipeline() {
   }
 }
 
-// 等待阶段完成（轮询）
-async function waitForStageComplete(id: string, stage: string) {
-  const maxAttempts = 150 // 最多 5 分钟
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, 2000))
-    await store.fetchPipelineStatus(id)
-    const st = store.pipelineStatus?.stages?.find(s => s.stage === stage)
-    if (st && (st.status === 'completed' || st.status === 'waiting_confirm' || st.status === 'failed')) {
-      return st
-    }
-  }
-  return null
-}
-
 async function loadStageData(stage: string) {
   switch (stage) {
     case 'topic': await store.fetchTopic(projectId.value); break
     case 'world': await store.fetchWorld(projectId.value); break
     case 'character': await store.fetchCharacters(projectId.value); break
     case 'outline': await store.fetchOutline(projectId.value); break
+    case 'scene':
+      await store.fetchOutline(projectId.value)
+      if (store.outline?.chapters) {
+        for (const ch of store.outline.chapters) {
+          await loadSceneData(ch.chapter_number)
+        }
+      }
+      break
     case 'metadata': await store.fetchMetadata(projectId.value); break
     case 'draft': await store.fetchChapter(projectId.value, 1); break
     case 'review': await store.fetchReview(projectId.value); break
   }
+}
+
+async function handleTaskComplete(stage: string) {
+  await store.fetchPipelineStatus(projectId.value)
+  if (stage) await loadStageData(stage)
 }
 
 function getNextTabKey(tab: string): string | null {
@@ -206,20 +343,15 @@ function getNextTabKey(tab: string): string | null {
 }
 
 async function runStageInternal(stage: string, feedback?: string) {
-  await store.runStage(projectId.value, stage, feedback)
-  const status = await waitForStageComplete(projectId.value, stage)
-  if (!status) {
-    throw new Error('阶段生成超时')
-  }
-  if (status.status === 'failed') {
-    throw new Error(status.error || '阶段生成失败')
-  }
-  await loadStageData(stage)
+  const task = await taskPoller.submitTask(() => store.runStage(projectId.value, stage, feedback))
+  if (task.status === 'failed') throw new Error(task.error || '阶段生成失败')
+  if (task.status === 'cancelled') throw new Error('阶段生成已取消')
+  await handleTaskComplete(stage)
 }
 
 // 运行阶段
 async function handleRunStage(stage: string) {
-  if (stageActionLoading.value) return
+  if (stageActionLoading.value || taskLoading.value) return
   stageActionLoading.value = true
   stageActionText.value = `正在生成${stageNames[stage] || '当前阶段'}...`
   try {
@@ -333,6 +465,24 @@ function onOutlineUpdate(data: any) {
   store.outline = { ...store.outline, ...data }
 }
 
+// 场景数据缓存
+const sceneCache = ref<Record<number, any[]>>({})
+
+function getSceneData(chNum: number): any[] {
+  return sceneCache.value[chNum] || []
+}
+
+async function loadSceneData(chNum: number) {
+  try {
+    const { getScene } = await import('@/api')
+    const res = await getScene(projectId.value, chNum)
+    const data = res.data.data ?? res.data
+    sceneCache.value[chNum] = Array.isArray(data) ? data : data?.scenes || []
+  } catch {
+    sceneCache.value[chNum] = []
+  }
+}
+
 // 章节更新
 function onChapterUpdate(data: any) {
   store.currentChapter = { ...store.currentChapter, ...data }
@@ -367,6 +517,35 @@ function onMetadataConfirm() {
 const operationLogs = ref([
   { time: '10:30', action: '项目创建完成', status: 'done' as const },
 ])
+
+const activeTask = computed(() => taskPoller.activeTask.value || store.activeTask)
+const hasTaskStatus = computed(() => !!activeTask.value?.task_id)
+const taskStatusColor = computed(() => {
+  const status = activeTask.value?.status
+  if (status === 'running' || status === 'pending') return 'blue'
+  if (status === 'success') return 'green'
+  if (status === 'failed') return 'red'
+  if (status === 'cancelled') return 'default'
+  return 'default'
+})
+const activeTaskStageName = computed(() => stageNames[activeTask.value?.stage || ''] || activeTask.value?.stage || '未知阶段')
+const activeTaskProgress = computed(() => activeTask.value?.progress?.percent ?? 0)
+
+async function cancelActiveTask() {
+  try {
+    await taskPoller.cancelTask()
+    await store.fetchActiveTask(projectId.value)
+    message.info('取消请求已提交')
+  } catch (error: any) {
+    message.error(error.message || '取消失败')
+  }
+}
+
+async function retryActiveTask() {
+  const stage = activeTask.value?.stage
+  if (!stage) return
+  await handleRunStage(stage)
+}
 
 // 组件 ref（用于触发编辑模式）
 const worldPanelRef = ref<InstanceType<typeof WorldPanel> | null>(null)
@@ -414,7 +593,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
       <div class="detail-body">
         <!-- 内容区 -->
         <div class="detail-content">
-          <Spin :spinning="globalLoading" :tip="stageActionText || '加载中...'" class="content-spin">
+          <Spin :spinning="globalLoading" :tip="loadingTip" class="content-spin">
 
           <!-- 概览 -->
           <template v-if="activeTab === 'overview'">
@@ -423,7 +602,10 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
               <p><strong>题材：</strong>{{ store.currentProject.genre }}</p>
               <p><strong>平台：</strong>{{ store.currentProject.platforms?.join('、') || store.currentProject.platform || '未设置' }}</p>
               <p><strong>目标字数：</strong>{{ ((store.currentProject.target_words || store.currentProject.word_count_target || 0) / 10000).toFixed(0) }}万字</p>
+              <p><strong>每章字数：</strong>{{ store.currentProject.chapter_word_count || 3000 }}字（实际字数以正文为准，允许±100字浮动）</p>
+              <p><strong>预计章节数：</strong>{{ Math.floor((store.currentProject.target_words || 0) / (store.currentProject.chapter_word_count || 3000)) }}章</p>
               <p><strong>创建时间：</strong>{{ new Date(store.currentProject.created_at).toLocaleString('zh-CN') }}</p>
+              <p style="color: #999; font-size: 12px; margin-top: 8px;">* 实际字数以选题方案确认的为准</p>
               <div style="text-align: center; margin-top: 24px;">
                 <Button type="primary" size="large" @click="onTabChange('topic')">
                   下一步：选题方案 →
@@ -438,7 +620,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><BulbOutlined /> 选题方案</span>
               <Space>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('topic')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('topic')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -484,7 +666,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
                 <Button v-if="store.worldSetting && !worldPanelRef?.editing" class="stage-action-button btn-edit" @click="worldPanelRef?.startEdit()">
                   <EditOutlined /> 编辑
                 </Button>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('world')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('world')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -532,7 +714,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
                 <Button v-if="store.characters.length" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('character')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('character')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -572,45 +754,114 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             <div class="stage-top-bar">
               <span class="stage-top-title"><FileTextOutlined /> 大纲编辑</span>
               <Space>
-                <Button v-if="store.outline" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
+                <Popconfirm
+                  v-if="store.outline && outlineChapters.length > 0"
+                  title="确定清空全部大纲？此操作不可恢复。"
+                  @confirm="deleteAllOutlineChapters"
+                  ok-text="确认清空"
+                  cancel-text="取消"
+                  :ok-button-props="{ danger: true }"
+               >
+                  <Button danger :loading="stageActionLoading"><DeleteOutlined /> 全部删除</Button>
+                </Popconfirm>
+                <Button v-if="store.outline && outlineChapters.length > 0 && shouldShowStageConfirm" class="stage-action-button btn-adopt" :loading="stageActionLoading" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button v-if="store.outline && outlineEditorRef?.editing" class="stage-action-button btn-cancel" @click="outlineEditorRef?.cancelEdit()">
-                  <CloseOutlined /> 取消
-                </Button>
-                <Button v-if="store.outline && !outlineEditorRef?.editing" class="stage-action-button btn-edit" @click="outlineEditorRef?.startEdit()">
-                  <EditOutlined /> 编辑
-                </Button>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('outline')">
-                  <BulbOutlined /> AI生成
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleOutlineBatchGenerate()">
+                  <BulbOutlined /> {{ outlineGeneratedCount > 0 ? `继续生成 (${outlineGeneratedCount}/${outlineTotalChapters})` : 'AI生成' }}
                 </Button>
               </Space>
             </div>
             <!-- 空状态 -->
-            <div v-if="!store.outline" class="empty-framework">
-              <div class="empty-card-placeholder" v-for="i in 5" :key="i">
-                <div class="empty-card-line title"></div>
-                <div class="empty-card-line"></div>
-              </div>
+            <div v-if="!store.outline || outlineChapters.length === 0" class="empty-framework">
+              <Empty description="大纲为空，点击上方「AI生成」开始创作" />
             </div>
-            <!-- 有数据 -->
-            <OutlineEditor
-              v-if="store.outline"
-              ref="outlineEditorRef"
-              :outline="store.outline"
-              :loading="globalLoading"
-              :project-id="projectId"
-              :show-confirm="false"
-              :hide-actions="true"
-              @update="onOutlineUpdate"
-            />
+            <!-- 大纲表格 -->
+            <template v-if="store.outline && outlineChapters.length > 0">
+              <Table
+                :columns="outlineColumns"
+                :data-source="outlinePagedChapters"
+                :pagination="false"
+                size="small"
+                row-key="chapter_number"
+              >
+                <template #bodyCell="{ record, index, column }">
+                  <template v-if="column.key === 'index'">
+                    {{ (outlinePage - 1) * outlinePageSize + index + 1 }}
+                  </template>
+                  <template v-else-if="column.key === 'title'">
+                    {{ record.title }}
+                  </template>
+                  <template v-else-if="column.key === 'core_event'">
+                    {{ record.core_event ? record.core_event.slice(0, 60) + (record.core_event.length > 60 ? '...' : '') : '-' }}
+                  </template>
+                  <template v-else-if="column.key === 'characters_present'">
+                    <template v-if="Array.isArray(record.characters_present) && record.characters_present.length">
+                      <Tag v-for="c in record.characters_present.slice(0, 3)" :key="c" size="small">{{ c }}</Tag>
+                    </template>
+                    <span v-else>-</span>
+                  </template>
+                  <template v-else-if="column.key === 'action'">
+                    <Space>
+                      <Button type="link" size="small" @click="openOutlineDetail(record)">查看</Button>
+                      <Button type="link" size="small" danger @click="deleteOutlineChapter(index)">删除</Button>
+                    </Space>
+                  </template>
+                </template>
+              </Table>
+              <div style="text-align: center; margin-top: 16px;">
+                <Space>
+                  <Button size="small" :disabled="outlinePage <= 1" @click="outlinePage--">上一页</Button>
+                  <span>第 {{ outlinePage }} / {{ Math.ceil(outlineChapters.length / outlinePageSize) }} 页</span>
+                  <Button size="small" :disabled="outlinePage >= Math.ceil(outlineChapters.length / outlinePageSize)" @click="outlinePage++">下一页</Button>
+                </Space>
+              </div>
+            </template>
             <StageConfirm
-              v-if="shouldShowStageConfirm && store.outline"
+              v-if="shouldShowStageConfirm && store.outline && outlineChapters.length > 0"
               class="stage-action-card"
               :stage-name="stageConfirmName"
               :loading="stageActionLoading"
               @confirm="handleStageConfirm"
             />
+          </template>
+
+          <!-- 场景细纲 -->
+          <template v-if="activeTab === 'scene'">
+            <!-- 顶部操作栏 -->
+            <div class="stage-top-bar">
+              <span class="stage-top-title"><BlockOutlined /> 场景细纲</span>
+              <Space>
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('scene')">
+                  <SyncOutlined /> AI生成
+                </Button>
+              </Space>
+            </div>
+            <!-- 空状态 -->
+            <div v-if="!store.outline || outlineChapters.length === 0" class="empty-framework">
+              <Empty description="请先生成大纲" />
+            </div>
+            <!-- 场景列表 -->
+            <template v-else>
+              <Collapse accordion>
+                <Collapse.Panel
+                  v-for="ch in outlineChapters"
+                  :key="ch.chapter_number"
+                  :header="`第${ch.chapter_number}章 ${ch.title}`"
+                >
+                  <div v-if="getSceneData(ch.chapter_number) && getSceneData(ch.chapter_number).length">
+                    <div v-for="(scene, si) in getSceneData(ch.chapter_number)" :key="si" class="scene-card">
+                      <p><strong>场景 {{ si + 1 }}：</strong>{{ scene.location || '-' }}</p>
+                      <p v-if="scene.atmosphere"><strong>氛围：</strong>{{ scene.atmosphere }}</p>
+                      <p v-if="scene.conflict"><strong>冲突：</strong>{{ scene.conflict }}</p>
+                      <p v-if="scene.turning_point"><strong>转折：</strong>{{ scene.turning_point }}</p>
+                      <p v-if="scene.emotion_start"><strong>情绪：</strong>{{ scene.emotion_start }} → {{ scene.emotion_end }}</p>
+                    </div>
+                  </div>
+                  <Empty v-else description="暂无场景细纲" />
+                </Collapse.Panel>
+              </Collapse>
+            </template>
           </template>
 
           <!-- 书籍元数据 -->
@@ -622,7 +873,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
                 <Button v-if="store.metadata" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('metadata')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('metadata')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -663,7 +914,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
                 <Button v-if="store.currentChapter" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('draft')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('draft')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -705,7 +956,7 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
                 <Button v-if="store.reviewReport" class="stage-action-button btn-adopt" :loading="stageActionLoading" :disabled="!canApproveCurrentStage || stageActionLoading" :title="approveButtonTitle" @click="handleStageConfirm('approve')">
                   <CheckCircleOutlined /> 采用
                 </Button>
-                <Button class="stage-action-button btn-generate" type="primary" :loading="stageActionLoading" @click="handleRunStage('review')">
+                <Button class="stage-action-button btn-generate" type="primary" :loading="globalLoading" :disabled="taskLoading" @click="handleRunStage('review')">
                   <BulbOutlined /> AI生成
                 </Button>
               </Space>
@@ -749,6 +1000,35 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
             </div>
           </Card>
 
+          <!-- 任务状态 -->
+          <Card title="任务状态" size="small" class="panel-card" style="margin-top: 12px">
+            <template v-if="hasTaskStatus && activeTask">
+              <div class="task-status-card">
+                <div class="task-status-header">
+                  <Text strong>{{ activeTaskStageName }}</Text>
+                  <Tag :color="taskStatusColor">{{ activeTask.status }}</Tag>
+                </div>
+                <Progress
+                  :percent="activeTaskProgress"
+                  size="small"
+                  :status="activeTask.status === 'failed' ? 'exception' : activeTask.status === 'success' ? 'success' : 'active'"
+                />
+                <div class="task-status-text">{{ taskPoller.statusText }}</div>
+                <div class="task-status-meta">
+                  <span>耗时：{{ taskPoller.formatElapsed() }}</span>
+                  <span v-if="activeTask.progress?.label">{{ activeTask.progress.label }}</span>
+                </div>
+                <Space v-if="activeTask.status === 'pending' || activeTask.status === 'running'" style="margin-top: 10px">
+                  <Button size="small" danger @click="cancelActiveTask">取消任务</Button>
+                </Space>
+                <Space v-else-if="activeTask.status === 'failed'" style="margin-top: 10px">
+                  <Button size="small" type="primary" @click="retryActiveTask">重试</Button>
+                </Space>
+              </div>
+            </template>
+            <Text v-else type="secondary">暂无运行中的任务</Text>
+          </Card>
+
           <!-- 操作日志 -->
           <Card title="操作日志" size="small" class="panel-card" style="margin-top: 12px">
             <div class="logs-list">
@@ -765,6 +1045,55 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
         </div>
       </div>
     </div>
+
+    <!-- 大纲章节详情弹窗 -->
+    <Modal
+      v-model:open="outlineDrawerVisible"
+      :title="outlineDrawerChapter ? `第 ${outlineDrawerChapter.chapter_number} 章：${outlineDrawerChapter.title}` : '章节详情'"
+      width="500px"
+      :footer="null"
+      :mask-closable="true"
+      @cancel="closeOutlineDetail"
+    >
+      <div v-if="outlineDrawerChapter">
+        <p><strong>核心事件：</strong>{{ outlineDrawerChapter.core_event || '-' }}</p>
+        <p><strong>出场角色：</strong>{{ Array.isArray(outlineDrawerChapter.characters_present) ? outlineDrawerChapter.characters_present.join('、') : (outlineDrawerChapter.characters_present || '-') }}</p>
+        <p><strong>情绪定位：</strong>{{ outlineDrawerChapter.emotion_position || '-' }}</p>
+        <p v-if="outlineDrawerChapter.emotion_arc"><strong>情绪弧线：</strong>{{ outlineDrawerChapter.emotion_arc }}</p>
+        <p><strong>钩子：</strong>{{ outlineDrawerChapter.hook || '-' }}</p>
+        <div v-if="outlineDrawerChapter.foreshadow_ops && outlineDrawerChapter.foreshadow_ops.length" style="margin-top: 12px;">
+          <p><strong>伏笔操作：</strong></p>
+          <ul>
+            <li v-for="(item, i) in outlineDrawerChapter.foreshadow_ops" :key="i">{{ item }}</li>
+          </ul>
+        </div>
+        <div v-if="outlineDrawerChapter.plot_lines_progress && Object.keys(outlineDrawerChapter.plot_lines_progress).length" style="margin-top: 12px;">
+          <p><strong>情节线推进：</strong></p>
+          <ul>
+            <li v-for="(val, key) in outlineDrawerChapter.plot_lines_progress" :key="key">{{ key }}：{{ val }}</li>
+          </ul>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- 大纲分批生成弹窗 -->
+    <Modal
+      v-model:open="outlineBatchDialogVisible"
+      title="生成大纲"
+      @ok="confirmOutlineBatchGenerate"
+      :confirm-loading="stageActionLoading"
+    >
+      <p>已生成 {{ outlineGeneratedCount }} / {{ outlineTotalChapters }} 章</p>
+      <p>本次生成章节数：</p>
+      <InputNumber
+        v-model:value="outlineBatchSize"
+        :min="1"
+        :max="Math.max(1, outlineTotalChapters - outlineGeneratedCount)"
+        style="width: 100%"
+      />
+      <p style="color: #999; font-size: 12px; margin-top: 8px;">建议不要一次性生成太多，一是时间太长，二是调整起来麻烦。</p>
+    </Modal>
+
   </AppLayout>
 </template>
 
@@ -829,6 +1158,30 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
 .current-stage-info {
   display: flex;
   align-items: center;
+}
+
+.task-status-card {
+  font-size: 13px;
+}
+
+.task-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.task-status-text {
+  color: #334155;
+  margin-top: 6px;
+}
+
+.task-status-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #64748b;
+  margin-top: 6px;
 }
 
 .logs-list {
@@ -979,4 +1332,3 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null)
   }
 }
 </style>
-

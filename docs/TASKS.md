@@ -7,8 +7,6 @@
 | ID | Slug | 状态 | 优先级 | 目标 |
 |---:|---|---|---|---|
 | 0007 | process-realignment | 🟢 进行中 | P0 | 审计并回正任务包驱动开发流程 |
-| 0009 | project-detail-action-bar-polish | ✅ 完成 | P0 | 修复详情页顶部操作栏行为与按钮样式 |
-| 0010 | world-generation-contract-repair | ✅ 完成 | P0 | 修复世界观生成与前端展示契约 |
 | 0004 | cover-generation | 🟡 待开始 | P0 | 封面生成（AI 绘图） |
 | 0005 | publish-packaging | 🟡 待开始 | P0 | 发布打包（TXT/图文/视频导出） |
 | 0006 | platform-taxonomy | 🟡 待开始 | P0 | 番茄/小红书分类体系对接 |
@@ -21,6 +19,9 @@
 | 0002 | book-metadata-generation | ✅ Done | P0 | 书名+简介+标签+分类自动生成 | 2026-05-28 |
 | 0003 | inline-editing | ✅ Done | P0 | 二次编辑功能 | 2026-05-28 |
 | 0008 | frontend-api-contract-repair | ✅ Done | P0 | 修复详情页阶段确认与前后端契约 | 2026-05-30 |
+| 0009 | project-detail-action-bar-polish | ✅ Done | P0 | 修复详情页顶部操作栏行为与按钮样式 | 2026-05-30 |
+| 0010 | world-generation-contract-repair | ✅ Done | P0 | 修复世界观生成与前端展示契约 | 2026-05-30 |
+| 0017 | frontend-task-status | ✅ Done | P0 | 前端任务状态展示（useTaskPoller+右侧面板） | 2026-05-31 |
 | — | coding-standards | ✅ Done | P1 | 编码规范文档 + AGENTS.md 规则 | 2026-05-29 |
 | — | docs-alignment | ✅ Done | P1 | 设计文档与实现对齐 | 2026-05-29 |
 

@@ -65,7 +65,7 @@ async function saveEdit() {
     editData.value.chapters.forEach((ch, i) => {
       ch.chapter_number = i + 1
     })
-    editData.value.total_chapters = editData.value.chapters.length
+    // total_chapters 保持不变（生成目标），不随编辑覆盖
     await updateOutline(props.projectId, editData.value)
     emit('update', editData.value)
     editing.value = false
@@ -120,10 +120,11 @@ function addChapter() {
   editData.value.chapters.push({
     chapter_number: nextNum,
     title: `第${nextNum}章`,
-    summary: '',
-    key_events: [],
-    pov_character: '',
-    word_count_target: 3000,
+    core_event: '',
+    characters_present: [],
+    emotion_position: '',
+    hook: '',
+    foreshadow_ops: [],
   })
 }
 
@@ -132,14 +133,14 @@ function deleteChapter(index: number) {
   editData.value.chapters.splice(index, 1)
 }
 
-function addKeyEvent(chapterIndex: number) {
+function addForeshadow(chapterIndex: number) {
   if (!editData.value) return
-  editData.value.chapters[chapterIndex].key_events.push('')
+  editData.value.chapters[chapterIndex].foreshadow_ops.push('')
 }
 
-function removeKeyEvent(chapterIndex: number, eventIndex: number) {
+function removeForeshadow(chapterIndex: number, eventIndex: number) {
   if (!editData.value) return
-  editData.value.chapters[chapterIndex].key_events.splice(eventIndex, 1)
+  editData.value.chapters[chapterIndex].foreshadow_ops.splice(eventIndex, 1)
 }
 
 const collapseItems = computed(() => {
@@ -194,25 +195,33 @@ defineExpose({ startEdit, cancelEdit, editing })
                   <Input v-model:value="editForm.title" />
                 </div>
                 <div class="form-item">
-                  <label>摘要</label>
-                  <Input.TextArea v-model:value="editForm.summary" :rows="3" />
+                  <label>核心事件</label>
+                  <Input.TextArea v-model:value="editForm.core_event" :rows="3" />
                 </div>
                 <div class="form-item">
-                  <label>关键事件（每行一个）</label>
-                  <Input.TextArea
-                    :value="editForm.key_events.join('\\n')"
-                    @update:value="(v: string) => editForm!.key_events = v.split('\\n').filter(Boolean)"
-                    :rows="3"
-                    placeholder="每行一个事件"
+                  <label>出场角色（逗号分隔）</label>
+                  <Input
+                    :value="Array.isArray(editForm.characters_present) ? editForm.characters_present.join('、') : ''"
+                    @update:value="(v: string) => editForm!.characters_present = v.split(/[、,，]/).filter(Boolean)"
+                    placeholder="角色1、角色2"
                   />
                 </div>
                 <div class="form-item">
-                  <label>POV 角色</label>
-                  <Input v-model:value="editForm.pov_character" />
+                  <label>情绪定位</label>
+                  <Input v-model:value="editForm.emotion_position" placeholder="如：压抑-释然" />
                 </div>
                 <div class="form-item">
-                  <label>目标字数</label>
-                  <InputNumber v-model:value="editForm.word_count_target" :min="500" :step="500" />
+                  <label>钩子</label>
+                  <Input.TextArea v-model:value="editForm.hook" :rows="2" />
+                </div>
+                <div class="form-item">
+                  <label>伏笔操作（每行一个）</label>
+                  <Input.TextArea
+                    :value="(editForm.foreshadow_ops || []).join('\\n')"
+                    @update:value="(v: string) => editForm!.foreshadow_ops = v.split('\\n').filter(Boolean)"
+                    :rows="3"
+                    placeholder="每行一个伏笔"
+                  />
                 </div>
                 <Space style="margin-top: 12px">
                   <Button type="primary" size="small" @click="saveEditChapter">
@@ -224,17 +233,20 @@ defineExpose({ startEdit, cancelEdit, editing })
             </template>
             <template v-else>
               <div class="chapter-info">
-                <p class="chapter-summary">{{ ch.summary }}</p>
+                <p class="chapter-summary">{{ ch.core_event || ch.summary || '-' }}</p>
                 <div class="chapter-meta">
-                  <Tag v-if="ch.pov_character" color="blue">
-                    <UserOutlined /> {{ ch.pov_character }}
-                  </Tag>
-                  <Tag color="orange">目标 {{ ch.word_count_target }} 字</Tag>
+                  <template v-if="ch.characters_present && ch.characters_present.length">
+                    <Tag v-for="c in ch.characters_present" :key="c" color="blue">
+                      <UserOutlined /> {{ c }}
+                    </Tag>
+                  </template>
+                  <Tag v-if="ch.emotion_position" color="purple">{{ ch.emotion_position }}</Tag>
                 </div>
-                <div class="chapter-events" v-if="ch.key_events.length">
-                  <div class="events-label">关键事件：</div>
+                <p v-if="ch.hook" class="chapter-hook">🪝 {{ ch.hook }}</p>
+                <div class="chapter-events" v-if="ch.foreshadow_ops && ch.foreshadow_ops.length">
+                  <div class="events-label">伏笔操作：</div>
                   <ul>
-                    <li v-for="(event, i) in ch.key_events" :key="i">{{ event }}</li>
+                    <li v-for="(item, i) in ch.foreshadow_ops" :key="i">{{ item }}</li>
                   </ul>
                 </div>
                 <Button
@@ -294,39 +306,47 @@ defineExpose({ startEdit, cancelEdit, editing })
                   <Input v-model:value="ch.title" />
                 </div>
                 <div class="form-item">
-                  <label>摘要</label>
-                  <Input.TextArea v-model:value="ch.summary" :rows="3" />
+                  <label>核心事件</label>
+                  <Input.TextArea v-model:value="ch.core_event" :rows="3" />
+                </div>
+                <div class="form-row">
+                  <div class="form-item" style="flex: 1">
+                    <label>出场角色（逗号分隔）</label>
+                    <Input
+                      :value="Array.isArray(ch.characters_present) ? ch.characters_present.join('、') : ''"
+                      @update:value="(v: string) => ch.characters_present = v.split(/[、,，]/).filter(Boolean)"
+                      placeholder="角色1、角色2"
+                    />
+                  </div>
+                  <div class="form-item" style="width: 200px">
+                    <label>情绪定位</label>
+                    <Input v-model:value="ch.emotion_position" placeholder="如：压抑-释然" />
+                  </div>
                 </div>
                 <div class="form-item">
-                  <label>关键事件</label>
+                  <label>钩子</label>
+                  <Input.TextArea v-model:value="ch.hook" :rows="2" />
+                </div>
+                <div class="form-item">
+                  <label>伏笔操作</label>
                   <div
-                    v-for="(event, ei) in ch.key_events"
+                    v-for="(item, ei) in ch.foreshadow_ops"
                     :key="ei"
                     class="list-edit-item"
                   >
-                    <Input v-model:value="ch.key_events[ei]" placeholder="事件描述" />
-                    <Button type="text" danger @click="removeKeyEvent(index, ei)">
+                    <Input v-model:value="ch.foreshadow_ops[ei]" placeholder="伏笔描述" />
+                    <Button type="text" danger @click="removeForeshadow(index, ei)">
                       <DeleteOutlined />
                     </Button>
                   </div>
                   <Button
                     type="dashed"
                     size="small"
-                    @click="addKeyEvent(index)"
+                    @click="addForeshadow(index)"
                     style="margin-top: 4px"
                   >
-                    <PlusOutlined /> 添加事件
+                    <PlusOutlined /> 添加伏笔
                   </Button>
-                </div>
-                <div class="form-row">
-                  <div class="form-item" style="flex: 1">
-                    <label>POV 角色</label>
-                    <Input v-model:value="ch.pov_character" />
-                  </div>
-                  <div class="form-item" style="width: 150px">
-                    <label>目标字数</label>
-                    <InputNumber v-model:value="ch.word_count_target" :min="500" :step="500" style="width: 100%" />
-                  </div>
                 </div>
               </div>
             </Card>
@@ -362,6 +382,12 @@ defineExpose({ startEdit, cancelEdit, editing })
   color: var(--color-text-secondary);
   line-height: 1.6;
   margin-bottom: 12px;
+}
+
+.chapter-hook {
+  color: var(--color-text-secondary);
+  font-style: italic;
+  margin-bottom: 8px;
 }
 
 .chapter-meta {

@@ -13,6 +13,7 @@ import type {
   CreateProjectParams,
   ConfirmAction,
   BookMetadata,
+  PipelineTask,
 } from '@/types'
 
 export const useProjectStore = defineStore('project', () => {
@@ -27,6 +28,7 @@ export const useProjectStore = defineStore('project', () => {
   const currentChapter = ref<Chapter | null>(null)
   const reviewReport = ref<ReviewReport | null>(null)
   const metadata = ref<BookMetadata | null>(null)
+  const activeTask = ref<PipelineTask | null>(null)
 
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -120,11 +122,18 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  function unwrapTask(data: PipelineTask | { data?: PipelineTask }): PipelineTask {
+    return 'data' in data && data.data ? data.data : data as PipelineTask
+  }
+
   async function runStage(id: string, stage: string, feedback?: string) {
     loading.value = true
     try {
-      await api.runStage(id, stage, feedback)
+      const res = await api.runStage(id, stage, feedback)
+      const task = unwrapTask(res.data)
+      activeTask.value = task
       await fetchPipelineStatus(id)
+      return task
     } catch (e: any) {
       error.value = e.message
       throw e
@@ -219,6 +228,21 @@ export const useProjectStore = defineStore('project', () => {
       outline.value = (outlineData && Object.keys(outlineData).length > 0) ? outlineData : null
     } catch (e: any) {
       error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function generateOutlineBatch(projectId: string, batchSize: number) {
+    loading.value = true
+    try {
+      const res = await api.generateOutlineBatch(projectId, batchSize)
+      const task = unwrapTask(res.data)
+      activeTask.value = task
+      return task
+    } catch (e: any) {
+      error.value = e.message
+      throw e
     } finally {
       loading.value = false
     }
@@ -373,6 +397,22 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  async function fetchActiveTask(projectId: string) {
+    try {
+      const res = await api.getActiveTask(projectId)
+      const task = unwrapTask(res.data)
+      activeTask.value = task.task_id ? task : null
+      return activeTask.value
+    } catch (e: any) {
+      error.value = e.message
+      return null
+    }
+  }
+
+  function setActiveTask(task: PipelineTask | null) {
+    activeTask.value = task
+  }
+
   function clearCurrent() {
     currentProject.value = null
     pipelineStatus.value = null
@@ -383,6 +423,7 @@ export const useProjectStore = defineStore('project', () => {
     currentChapter.value = null
     reviewReport.value = null
     metadata.value = null
+    activeTask.value = null
   }
 
   return {
@@ -397,6 +438,7 @@ export const useProjectStore = defineStore('project', () => {
     currentChapter,
     reviewReport,
     metadata,
+    activeTask,
     loading,
     error,
     // 计算属性
@@ -415,6 +457,7 @@ export const useProjectStore = defineStore('project', () => {
     fetchWorld,
     fetchCharacters,
     fetchOutline,
+    generateOutlineBatch,
     fetchChapter,
     fetchReview,
     fetchMetadata,
@@ -426,6 +469,8 @@ export const useProjectStore = defineStore('project', () => {
     updateOutlineData,
     updateChapterDraft,
     confirmStageAction,
+    fetchActiveTask,
+    setActiveTask,
     deleteProject,
     clearCurrent,
   }

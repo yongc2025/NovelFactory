@@ -24,6 +24,31 @@ export type PipelineStage =
 /** 阶段确认动作 */
 export type ConfirmAction = 'approve' | 'edit' | 'regenerate'
 
+/** 异步任务状态 */
+export type TaskStatus = 'idle' | 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+
+/** 异步任务进度 */
+export interface TaskProgress {
+  current: number
+  total: number
+  label: string
+  percent: number
+}
+
+/** 异步任务 */
+export interface PipelineTask {
+  task_id: string | null
+  project_id?: string
+  stage?: PipelineStage | string
+  status: TaskStatus
+  cancel_requested?: boolean
+  progress?: TaskProgress
+  started_at?: number
+  finished_at?: number
+  error?: string | null
+  message?: string
+}
+
 /** 项目 */
 export interface Project {
   id: string
@@ -164,10 +189,18 @@ export interface Outline {
 export interface OutlineChapter {
   chapter_number: number
   title: string
-  summary: string
-  key_events: string[]
+  core_event: string
+  characters_present: string[]
+  emotion_position?: string
+  emotion_arc?: string
+  hook?: string
+  foreshadow_ops: string[]
+  plot_lines_progress?: Record<string, string>
+  // 兼容旧数据
+  summary?: string
+  key_events?: string[]
   pov_character?: string
-  word_count_target: number
+  word_count_target?: number
 }
 
 /** 章节 */

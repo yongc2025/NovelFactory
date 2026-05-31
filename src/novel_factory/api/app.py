@@ -61,7 +61,8 @@ logger.propagate = False
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from novel_factory.api.deps import get_pipeline, get_store
+from novel_factory.api.deps import get_pipeline, get_store, get_context_store
+from novel_factory.api.task_registry import registry
 from novel_factory.api.schemas import (
     GENRE_MATRIX,
     BookMetadata,
@@ -376,17 +377,29 @@ async def _run_pipeline_background(
                     outline = store.get_outline(project_id) or {}
                     characters = store.get_characters(project_id) or {}
                     chapters = outline.get("chapters", [])
+                    # 0019: 从 ContextStore 读前文摘要并保存本章摘要
+                    ctx_store = get_context_store()
+                    from novel_factory.engine.memory import generate_summary
                     for ch in chapters:
                         ch_num = ch.get("chapter_num", 0)
                         ch_scenes = store.get_scene(project_id, ch_num) or []
                         chapter_draft = ""
                         scene_list = ch_scenes if isinstance(ch_scenes, list) else [ch_scenes]
+                        prev_summary = ctx_store.get_recent_summaries(project_id, ch_num, window=3)
                         for single_scene in scene_list:
                             draft = await pipeline._step_draft(
-                                project_id, ch, single_scene, characters, params
+                                project_id, ch, single_scene, characters, params,
+                                prev_summary=prev_summary,
                             )
                             chapter_draft += draft + "\n\n"
-                        store.save_draft(project_id, ch_num, chapter_draft.strip())
+                        full_draft = chapter_draft.strip()
+                        store.save_draft(project_id, ch_num, full_draft)
+                        # 0019: 生成并保存本章摘要
+                        try:
+                            summary = await generate_summary(full_draft, max_words=150)
+                            ctx_store.save_summary(project_id, ch_num, summary)
+                        except Exception as e:
+                            logger.warning("摘要生成失败: ch%d: %s", ch_num, e)
                 elif stage_key == "review":
                     result = await pipeline._step_review(project_id)
 
@@ -499,11 +512,18 @@ async def pipeline_plan(project_id: str, background_tasks: BackgroundTasks):
     if state["status"] == "running":
         raise HTTPException(status_code=409, detail="流水线正在运行中")
 
+    # 计算章节数：target_words / chapter_word_count
+    chapter_word_count = project.get("chapter_word_count", 3000)
+    target_words = project.get("target_words", 8000)
+    calculated_chapters = max(3, target_words // chapter_word_count) if chapter_word_count > 0 else 10
+
     params = {
         "inspiration": project.get("inspiration") or project.get("premise", ""),
         "genre_hint": project.get("genre") or project.get("genre_major"),
         "genre_major": project.get("genre_major") or project.get("genre"),
-        "target_chapters": project.get("target_chapters", 10),
+        "target_words": target_words,
+        "target_chapters": project.get("target_chapters", calculated_chapters),
+        "chapter_word_count": chapter_word_count,
         "target_audience": project.get("target_audience", "male"),
     }
 
@@ -516,7 +536,7 @@ async def pipeline_plan(project_id: str, background_tasks: BackgroundTasks):
 
 @app.post("/api/projects/{project_id}/pipeline/stage/{stage}")
 async def pipeline_stage(project_id: str, stage: str, background_tasks: BackgroundTasks, body: dict | None = None):
-    """运行单个阶段"""
+    """运行单个阶段（通过 TaskRegistry 管理）"""
     store = get_store()
     project = store.get_project(project_id)
     if not project:
@@ -526,40 +546,59 @@ async def pipeline_stage(project_id: str, stage: str, background_tasks: Backgrou
     if stage not in valid_stages:
         raise HTTPException(status_code=400, detail=f"无效阶段: {stage}，可选: {valid_stages}")
 
-    state = _get_or_create_state(project_id)
-    if state["status"] == "running":
-        raise HTTPException(status_code=409, detail="流水线正在运行中，请等待完成")
+    # 计算章节数
+    chapter_word_count = project.get("chapter_word_count", 3000)
+    target_words = project.get("target_words", 8000)
+    calculated_chapters = max(3, target_words // chapter_word_count) if chapter_word_count > 0 else 10
+    target_chapters = project.get("target_chapters") or calculated_chapters
 
     params = {
         "inspiration": project.get("inspiration") or project.get("premise", ""),
         "genre_hint": project.get("genre") or project.get("genre_major"),
         "genre_major": project.get("genre_major") or project.get("genre"),
-        "target_words": project.get("target_words", 8000),
-        "target_chapters": project.get("target_chapters"),
+        "target_words": target_words,
+        "target_chapters": target_chapters,
+        "chapter_word_count": chapter_word_count,
         "target_audience": project.get("target_audience", "male"),
     }
 
-    # 接收 feedback 参数
-    feedback = None
+    # 接收 feedback 和批量参数
     if body:
         feedback = body.get("feedback")
-    if feedback:
-        params["feedback"] = feedback
+        if feedback:
+            params["feedback"] = feedback
+        # 批量生成参数（draft/scene/review 阶段）
+        if body.get("start_chapter"):
+            params["start_chapter"] = body["start_chapter"]
+        if body.get("batch_size"):
+            params["batch_size"] = min(body["batch_size"], 10)
+        if body.get("force"):
+            params["force"] = True
 
-    _run_in_background(_run_single_stage(project_id, stage, params))
-    _update_state(project_id, status="running", current_stage=stage,
-                   current_stage_label=dict(STAGES).get(stage, stage))
+    # 通过 TaskRegistry 提交（幂等+互斥）
+    try:
+        task, is_new = await registry.submit(project_id, stage, params)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    if not is_new:
+        # 幂等命中：返回已有任务
+        return task.to_dict()
+
+    # 启动后台执行
+    await registry.transition(task.id, "running")
+    _run_in_background(_execute_stage_task(task))
 
     stage_label = dict(STAGES).get(stage, stage)
-    return {"message": f"阶段 [{stage_label}] 已启动", "project_id": project_id, "stage": stage}
+    return {"task_id": task.id, "message": f"阶段 [{stage_label}] 已启动", "project_id": project_id, "stage": stage}
 
 
-async def _run_single_stage(project_id: str, stage: str, params: dict[str, Any]) -> None:
-    """后台运行单个阶段"""
+async def _execute_stage_task(task) -> None:
+    """后台执行阶段任务（通过 TaskRegistry 管理状态）"""
+    project_id = task.project_id
+    stage = task.stage
+    params = task.params
     try:
-        _update_state(project_id, status="running", current_stage=stage,
-                       current_stage_label=dict(STAGES).get(stage, stage))
-
         pipeline = get_pipeline()
         store = get_store()
         inspiration = params["inspiration"]
@@ -579,7 +618,8 @@ async def _run_single_stage(project_id: str, stage: str, params: dict[str, Any])
             topic = _selected_topic(store.get_topic(project_id))
             world = store.get_world(project_id) or {}
             characters = store.get_characters(project_id) or {}
-            target_chapters = params.get("target_chapters", max(3, target_words // 800))
+            chapter_word_count = params.get("chapter_word_count", 3000)
+            target_chapters = params.get("target_chapters", max(3, target_words // chapter_word_count) if chapter_word_count > 0 else 10)
             await pipeline._step_outline(project_id, topic, world, characters, target_chapters, params)
         elif stage == "metadata":
             topic = _selected_topic(store.get_topic(project_id))
@@ -590,33 +630,120 @@ async def _run_single_stage(project_id: str, stage: str, params: dict[str, Any])
             outline = store.get_outline(project_id) or {}
             characters = store.get_characters(project_id) or {}
             chapters = outline.get("chapters", [])
-            for ch in chapters:
+            for i, ch in enumerate(chapters):
+                if task.cancel_requested:
+                    await registry.transition(task.id, "cancelled")
+                    return
                 ch_num = ch.get("chapter_num", 0)
+                await registry.update_progress(task.id, i, len(chapters), f"第 {ch_num} 章")
                 scenes = await pipeline._step_scene(project_id, ch, characters, params)
                 store.save_scene(project_id, ch_num, scenes)
         elif stage == "draft":
             outline = store.get_outline(project_id) or {}
             characters = store.get_characters(project_id) or {}
             chapters = outline.get("chapters", [])
-            for ch in chapters:
+            ctx_store = get_context_store()
+            from novel_factory.engine.memory import generate_summary
+
+            # 批量参数
+            start_ch = params.get("start_chapter", 1)
+            batch = params.get("batch_size", len(chapters))
+            force = params.get("force", False)
+            # 筛选本次要生成的章节
+            target_chapters = [ch for ch in chapters if ch.get("chapter_num", 0) >= start_ch][:batch]
+
+            for i, ch in enumerate(target_chapters):
+                if task.cancel_requested:
+                    await registry.transition(task.id, "cancelled")
+                    return
                 ch_num = ch.get("chapter_num", 0)
+                await registry.update_progress(task.id, i, len(target_chapters), f"第 {ch_num} 章")
+
+                # 断点续写：跳过已有正文
+                existing = store.get_draft(project_id, ch_num)
+                if existing and not force:
+                    logger.info("跳过已有正文: ch%d", ch_num)
+                    continue
+
+                # 读取前文摘要
+                prev_summary = ctx_store.get_recent_summaries(project_id, ch_num, window=3)
                 ch_scenes = store.get_scene(project_id, ch_num) or []
                 chapter_draft = ""
                 scene_list = ch_scenes if isinstance(ch_scenes, list) else [ch_scenes]
                 for single_scene in scene_list:
-                    draft = await pipeline._step_draft(project_id, ch, single_scene, characters, params)
+                    draft = await pipeline._step_draft(
+                        project_id, ch, single_scene, characters, params,
+                        prev_summary=prev_summary,
+                    )
                     chapter_draft += draft + "\n\n"
-                store.save_draft(project_id, ch_num, chapter_draft.strip())
+                full_draft = chapter_draft.strip()
+                store.save_draft(project_id, ch_num, full_draft)
+                # 生成并保存本章摘要
+                try:
+                    summary = await generate_summary(full_draft, max_words=150)
+                    ctx_store.save_summary(project_id, ch_num, summary)
+                except Exception as e:
+                    logger.warning("摘要生成失败: ch%d: %s", ch_num, e)
         elif stage == "review":
-            await pipeline._step_review(project_id)
+            outline = store.get_outline(project_id) or {}
+            chapters = outline.get("chapters", [])
+            ctx_store = get_context_store()
+            from novel_factory.engine.editor import review_chapter
 
+            # 批量参数
+            start_ch = params.get("start_chapter", 1)
+            batch = params.get("batch_size", len(chapters))
+            target_chapters = [ch for ch in chapters if ch.get("chapter_num", 0) >= start_ch][:batch]
+
+            for i, ch in enumerate(target_chapters):
+                if task.cancel_requested:
+                    await registry.transition(task.id, "cancelled")
+                    return
+                ch_num = ch.get("chapter_num", 0)
+                await registry.update_progress(task.id, i, len(target_chapters), f"审校第 {ch_num} 章")
+
+                draft = store.get_draft(project_id, ch_num)
+                if not draft:
+                    logger.info("跳过无正文章节: ch%d", ch_num)
+                    continue
+
+                # 读取上下文
+                prev_summary = ctx_store.get_recent_summaries(project_id, ch_num, window=3)
+                prev_reviews = ctx_store.get_recent_reviews(project_id, ch_num, window=3)
+                prev_issues = []
+                for r in prev_reviews:
+                    prev_issues.extend(r.get("issues", []))
+
+                characters = store.get_characters(project_id) or {}
+                char_list = characters if isinstance(characters, list) else []
+                foreshadows = outline.get("foreshadows", [])
+
+                result = await review_chapter(
+                    project_id, ch, draft, char_list, foreshadows,
+                    prev_summary=prev_summary,
+                    prev_issues=prev_issues,
+                )
+                ctx_store.save_chapter_review(project_id, ch_num, result)
+
+            # 保存汇总审校报告（兼容旧格式）
+            all_reviews = []
+            for ch in target_chapters:
+                ch_num = ch.get("chapter_num", 0)
+                r = ctx_store.get_chapter_review(project_id, ch_num)
+                if r:
+                    all_reviews.append({"chapter": ch_num, **r})
+            store.save_review(project_id, {"chapters": all_reviews, "total_chapters": len(chapters)})
+
+        await registry.transition(task.id, "success")
+        # 同步旧状态（兼容其他端点）
         _update_state(project_id, status="confirming", current_stage=stage,
                        current_stage_label=dict(STAGES).get(stage, stage),
                        needs_confirmation=True)
-        logger.info(f"阶段 [{stage}] 完成，等待确认: {project_id}")
+        logger.info("阶段 [%s] 完成: %s", stage, project_id)
     except Exception as e:
+        await registry.transition(task.id, "failed", error=str(e))
         _update_state(project_id, status="failed", error=str(e))
-        logger.error(f"阶段 [{stage}] 失败: {project_id}: {e}", exc_info=True)
+        logger.error("阶段 [%s] 失败: %s: %s", stage, project_id, e, exc_info=True)
 
 
 @app.post("/api/projects/{project_id}/pipeline/write")
@@ -902,6 +1029,118 @@ async def get_outline(project_id: str):
     return OutlineResponse(project_id=project_id, outline=outline or {})
 
 
+@app.post("/api/projects/{project_id}/outline/generate")
+async def generate_outline_batch(project_id: str, body: dict):
+    """分批生成大纲（通过 TaskRegistry 管理）"""
+    store = get_store()
+    project = store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    batch_size = body.get("batch_size", 10)
+    if batch_size < 1 or batch_size > 100:
+        raise HTTPException(status_code=400, detail="batch_size 必须在 1-100 之间")
+
+    existing_outline = store.get_outline(project_id) or {}
+    existing_chapters = existing_outline.get("chapters", [])
+    existing_foreshadows = existing_outline.get("foreshadows", [])
+    start_chapter = len(existing_chapters) + 1
+
+    chapter_word_count = project.get("chapter_word_count", 3000)
+    target_words = project.get("target_words", 8000)
+    total_chapters = project.get("target_chapters") or max(3, target_words // chapter_word_count)
+
+    if start_chapter > total_chapters:
+        raise HTTPException(status_code=400, detail=f"大纲已全部生成（共 {total_chapters} 章）")
+
+    actual_batch = min(batch_size, total_chapters - len(existing_chapters))
+
+    context = ""
+    if existing_chapters:
+        context = "已生成章节摘要：\n"
+        for ch in existing_chapters[-10:]:
+            context += f"- 第{ch.get('chapter_num', 0)}章 {ch.get('title', '')}: {ch.get('core_event', '')}\n"
+
+    params = {
+        "inspiration": project.get("inspiration") or project.get("premise", ""),
+        "genre_hint": project.get("genre") or project.get("genre_major"),
+        "genre_major": project.get("genre_major") or project.get("genre"),
+        "target_words": target_words,
+        "chapter_word_count": chapter_word_count,
+        "target_audience": project.get("target_audience", "male"),
+        "start_chapter": start_chapter,
+        "batch_size": actual_batch,
+        "total_chapters": total_chapters,
+        "existing_chapters_context": context,
+        "existing_foreshadows": existing_foreshadows,
+    }
+
+    try:
+        task, is_new = await registry.submit(project_id, "outline", params)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    if not is_new:
+        return task.to_dict()
+
+    await registry.transition(task.id, "running")
+    _run_in_background(_execute_outline_task(task))
+
+    return {
+        "task_id": task.id,
+        "message": f"开始生成第 {start_chapter}-{start_chapter + actual_batch - 1} 章大纲",
+        "start_chapter": start_chapter,
+        "batch_size": actual_batch,
+        "total_chapters": total_chapters,
+    }
+
+
+async def _execute_outline_task(task) -> None:
+    """后台执行大纲生成任务"""
+    project_id = task.project_id
+    params = task.params
+    try:
+        pipeline = get_pipeline()
+        store = get_store()
+
+        topic = _selected_topic(store.get_topic(project_id))
+        world = store.get_world(project_id) or {}
+        characters = store.get_characters(project_id) or {}
+        char_list = characters if isinstance(characters, list) else []
+        world_context = world if isinstance(world, (dict, list)) else {}
+
+        start_chapter = params["start_chapter"]
+        batch_size = params["batch_size"]
+
+        from novel_factory.engine.outliner import generate_outline_batch
+        new_chapters, new_foreshadows = await generate_outline_batch(
+            project_id, topic, world_context, char_list,
+            start_chapter, batch_size, params
+        )
+
+        existing_outline = store.get_outline(project_id) or {}
+        existing_chapters = existing_outline.get("chapters", [])
+        existing_foreshadows = existing_outline.get("foreshadows", [])
+        existing_chapters.extend(new_chapters)
+        existing_foreshadows.extend(new_foreshadows)
+
+        store.save_outline(project_id, {
+            "chapters": existing_chapters,
+            "foreshadows": existing_foreshadows,
+            "total_chapters": params.get("total_chapters", len(existing_chapters)),
+        })
+
+        await registry.transition(task.id, "success")
+        _update_state(project_id, status="confirming", current_stage="outline",
+                       current_stage_label="大纲生成", needs_confirmation=True)
+        logger.info("大纲批次完成: %s, 第 %d-%d 章", project_id, start_chapter, start_chapter + len(new_chapters) - 1)
+    except Exception as e:
+        await registry.transition(task.id, "failed", error=str(e))
+        logger.error("大纲批次失败: %s: %s", project_id, e, exc_info=True)
+        _update_state(project_id, status="idle", current_stage="outline",
+                       current_stage_label="大纲生成")
+
+
 def _normalize_outline(outline: dict) -> dict:
     """将后端大纲格式转为前端期望的格式"""
     chapters = outline.get("chapters", [])
@@ -920,6 +1159,58 @@ def _normalize_outline(outline: dict) -> dict:
         "chapters": normalized,
         "foreshadows": outline.get("foreshadows", []),
     }
+
+
+@app.get("/api/projects/{project_id}/drafts/status")
+async def get_draft_status(project_id: str):
+    """获取各章正文状态（用于前端批量 UI）"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    outline = store.get_outline(project_id) or {}
+    chapters = outline.get("chapters", [])
+    total_chapters = outline.get("total_chapters", len(chapters))
+
+    result = []
+    for ch in chapters:
+        ch_num = ch.get("chapter_num", 0)
+        has_draft = store.get_draft(project_id, ch_num) is not None
+        has_scenes = store.get_scene(project_id, ch_num) is not None
+        result.append({
+            "chapter_num": ch_num,
+            "title": ch.get("title", f"第{ch_num}章"),
+            "has_draft": has_draft,
+            "has_scenes": has_scenes,
+        })
+
+    generated = sum(1 for r in result if r["has_draft"])
+    return {
+        "project_id": project_id,
+        "total_chapters": total_chapters,
+        "generated_count": generated,
+        "chapters": result,
+    }
+
+
+@app.get("/api/projects/{project_id}/scenes/{chapter_num}")
+async def get_scene(project_id: str, chapter_num: int):
+    """获取某章场景细纲"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    scenes = store.get_scene(project_id, chapter_num)
+    return {"project_id": project_id, "chapter_num": chapter_num, "scenes": scenes or []}
+
+
+@app.put("/api/projects/{project_id}/scenes/{chapter_num}")
+async def update_scene(project_id: str, chapter_num: int, body: dict):
+    """更新某章场景细纲"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    store.save_scene(project_id, chapter_num, body)
+    return {"message": "场景已保存", "project_id": project_id, "chapter_num": chapter_num}
 
 
 @app.get("/api/projects/{project_id}/chapters/{chapter_num}", response_model=ChapterResponse)
@@ -951,6 +1242,17 @@ async def get_chapter(project_id: str, chapter_num: int):
         scenes=scenes,
         draft=draft,
     )
+
+
+@app.get("/api/projects/{project_id}/review/{chapter_num}")
+async def get_chapter_review(project_id: str, chapter_num: int):
+    """获取某章审校结果"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    ctx_store = get_context_store()
+    review = ctx_store.get_chapter_review(project_id, chapter_num)
+    return {"project_id": project_id, "chapter_num": chapter_num, "review": review}
 
 
 @app.get("/api/projects/{project_id}/review", response_model=ReviewResponse)
@@ -1095,6 +1397,46 @@ async def update_chapter(project_id: str, chapter_num: int, body: dict):
     store.save_draft(project_id, chapter_num, draft)
     _update_stage_state(project_id, "draft", "saved")
     return {"project_id": project_id, "chapter_num": chapter_num, "draft": draft, "content": draft}
+
+
+@app.post("/api/projects/{project_id}/chapters/{chapter_num}/revise")
+async def revise_chapter(project_id: str, chapter_num: int, body: dict):
+    """根据审校意见修改正文"""
+    store = get_store()
+    if not store.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    feedback = body.get("feedback", "")
+    issues = body.get("issues", [])
+
+    draft = store.get_draft(project_id, chapter_num)
+    if not draft:
+        raise HTTPException(status_code=404, detail=f"第 {chapter_num} 章正文不存在")
+
+    outline = store.get_outline(project_id) or {}
+    chapters = outline.get("chapters", [])
+    chapter = next((ch for ch in chapters if ch.get("chapter_num") == chapter_num), {})
+    characters = store.get_characters(project_id) or {}
+    char_list = characters if isinstance(characters, list) else []
+
+    from novel_factory.engine.writer import revise_with_feedback
+    from novel_factory.engine.memory import generate_summary
+    from novel_factory.db.context_store import ContextStore
+
+    revised = await revise_with_feedback(
+        project_id, chapter, draft, char_list, issues, feedback,
+    )
+    store.save_draft(project_id, chapter_num, revised)
+
+    # 更新摘要
+    ctx_store = ContextStore(store.data_dir)
+    try:
+        summary = await generate_summary(revised, max_words=150)
+        ctx_store.save_summary(project_id, chapter_num, summary)
+    except Exception as e:
+        logger.warning("摘要生成失败: ch%d: %s", chapter_num, e)
+
+    return {"project_id": project_id, "chapter_num": chapter_num, "status": "revised"}
 
 
 # ── 阶段状态追踪 ─────────────────────────────────────────────
@@ -1263,6 +1605,41 @@ async def get_genres():
         "matrix": GENRE_MATRIX,
         "majors": list(GENRE_MATRIX.keys()),
     }
+
+
+# ── 任务查询（TaskRegistry）─────────────────────────────────
+
+
+@app.get("/api/pipeline/tasks/{task_id}")
+async def get_task(task_id: str):
+    """查询任务状态"""
+    task = registry.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+    return task.to_dict()
+
+
+@app.post("/api/pipeline/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """取消任务"""
+    task = registry.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+    if task.status not in ("pending", "running"):
+        return {"message": "任务已结束，无法取消", "status": task.status}
+    ok = await registry.cancel(task_id)
+    if ok:
+        return {"message": "取消请求已标记", "task_id": task_id}
+    return {"message": "取消失败"}
+
+
+@app.get("/api/projects/{project_id}/pipeline/active-task")
+async def get_active_task(project_id: str):
+    """获取项目的当前活跃任务"""
+    task = registry.get_active(project_id)
+    if not task:
+        return {"task_id": None, "status": "idle"}
+    return task.to_dict()
 
 
 # ── 灵感生成 ─────────────────────────────────────────────────

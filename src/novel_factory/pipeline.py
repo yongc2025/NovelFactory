@@ -119,16 +119,31 @@ class NovelPipeline:
                     scenes = await self._step_scene(project_id, ch, characters, params)
                     self.store.save_scene(project_id, ch_num, scenes)
             elif stage_key == "draft":
+                # 0019: 从 ContextStore 读前文摘要并在生成后保存本章摘要
+                from novel_factory.api.deps import get_context_store
+                from novel_factory.engine.memory import generate_summary
+                ctx_store = get_context_store()
                 for ch in chapters:
                     ch_num = ch.get("chapter_num", 0)
                     console.print(f"  正文生成: {ch.get('title', f'第{ch_num}章')}")
                     ch_scenes = self.store.get_scene(project_id, ch_num) or []
                     scene_list = ch_scenes if isinstance(ch_scenes, list) else [ch_scenes]
+                    prev_summary = ctx_store.get_recent_summaries(project_id, ch_num, window=3)
                     chapter_draft = ""
                     for single_scene in scene_list:
-                        draft = await self._step_draft(project_id, ch, single_scene, characters, params)
+                        draft = await self._step_draft(
+                            project_id, ch, single_scene, characters, params,
+                            prev_summary=prev_summary,
+                        )
                         chapter_draft += draft + "\n\n"
-                    self.store.save_draft(project_id, ch_num, chapter_draft.strip())
+                    full_draft = chapter_draft.strip()
+                    self.store.save_draft(project_id, ch_num, full_draft)
+                    # 0019: 生成并保存本章摘要（供下一章使用）
+                    try:
+                        summary = await generate_summary(full_draft, max_words=150)
+                        ctx_store.save_summary(project_id, ch_num, summary)
+                    except Exception as e:
+                        logger.warning("摘要生成失败: ch%d: %s", ch_num, e)
             elif stage_key == "review":
                 review = await self._step_review(project_id)
                 self._print_stage_result("审校报告", review)
@@ -228,6 +243,11 @@ class NovelPipeline:
             title="[写作] 从大纲生成正文", border_style="cyan",
         ))
 
+        # 0019: 从 ContextStore 读前文摘要并在生成后保存本章摘要
+        from novel_factory.api.deps import get_context_store
+        from novel_factory.engine.memory import generate_summary
+        ctx_store = get_context_store()
+
         for i, ch in enumerate(chapters, 1):
             ch_num = ch.get("chapter_num", 0)
             console.print(f"\n[bold cyan][{i}/{len(chapters)}][/bold cyan] {ch.get('title', f'第{ch_num}章')}")
@@ -237,11 +257,22 @@ class NovelPipeline:
 
             console.print(f"  正文生成...")
             scene_list = scenes if isinstance(scenes, list) else [scenes]
+            prev_summary = ctx_store.get_recent_summaries(project_id, ch_num, window=3)
             chapter_draft = ""
             for single_scene in scene_list:
-                draft = await self._step_draft(project_id, ch, single_scene, characters, params)
+                draft = await self._step_draft(
+                    project_id, ch, single_scene, characters, params,
+                    prev_summary=prev_summary,
+                )
                 chapter_draft += draft + "\n\n"
-            self.store.save_draft(project_id, ch_num, chapter_draft.strip())
+            full_draft = chapter_draft.strip()
+            self.store.save_draft(project_id, ch_num, full_draft)
+            # 0019: 生成并保存本章摘要
+            try:
+                summary = await generate_summary(full_draft, max_words=150)
+                ctx_store.save_summary(project_id, ch_num, summary)
+            except Exception as e:
+                logger.warning("摘要生成失败: ch%d: %s", ch_num, e)
 
         self.store.update_project_status(project_id, "drafted")
         console.print()
@@ -332,12 +363,28 @@ class NovelPipeline:
             result = await self._placeholder_scene(chapter)
         return result
 
-    async def _step_draft(self, project_id: str, chapter: dict, scene: dict, characters: dict, params: dict) -> str:
-        """阶段 6：正文生成"""
+    async def _step_draft(
+        self,
+        project_id: str,
+        chapter: dict,
+        scene: dict,
+        characters: dict,
+        params: dict,
+        prev_summary: str = "",
+    ) -> str:
+        """阶段 6：正文生成
+
+        Args:
+            prev_summary: 前文摘要（0019 修复：跨章节上下文传递链）
+        """
         try:
             from novel_factory.engine.writer import write_scene
             char_list = characters if isinstance(characters, list) else []
-            result = await write_scene(project_id, chapter, scene, char_list, params=params)
+            result = await write_scene(
+                project_id, chapter, scene, char_list,
+                prev_summary=prev_summary,
+                params=params,
+            )
         except Exception as e:
             logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_draft(chapter)

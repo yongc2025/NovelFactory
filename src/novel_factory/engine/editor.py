@@ -25,6 +25,8 @@ async def review_chapter(
     draft: str,
     characters: list[dict] | None = None,
     foreshadows: list[dict] | None = None,
+    prev_summary: str = "",
+    prev_issues: list[dict] | None = None,
 ) -> dict:
     """
     审校一章
@@ -35,6 +37,8 @@ async def review_chapter(
         draft: 正文初稿
         characters: 角色列表
         foreshadows: 伏笔列表
+        prev_summary: 前文摘要（0019 修复）
+        prev_issues: 前几章已知问题列表（0019 修复）
 
     Returns:
         审校报告 dict
@@ -50,6 +54,17 @@ async def review_chapter(
         for f in (foreshadows or [])
     ) or "（暂无伏笔）"
 
+    # 0019: 前文上下文段落
+    prev_context = ""
+    if prev_summary:
+        prev_context += f"\n【前文摘要】\n{prev_summary}\n"
+    if prev_issues:
+        issues_str = "\n".join(
+            f"- {i.get('type', '')}: {i.get('description', '')}"
+            for i in prev_issues[:10]
+        )
+        prev_context += f"\n【前几章已知问题（本章需避免重犯）】\n{issues_str}\n"
+
     # 第一轮：规则检查
     rules_prompt = render_prompt(
         EDITOR_RULES_USER,
@@ -59,6 +74,8 @@ async def review_chapter(
         foreshadows_status=foreshadows_status,
         chapter_draft=draft,
     )
+    if prev_context:
+        rules_prompt = prev_context + "\n" + rules_prompt
 
     rules_messages = [
         {"role": "system", "content": EDITOR_RULES_SYSTEM},
@@ -76,6 +93,8 @@ async def review_chapter(
         chapter_draft=draft,
         word_count=len(draft),
     )
+    if prev_context:
+        quality_prompt = prev_context + "\n" + quality_prompt
 
     quality_messages = [
         {"role": "system", "content": EDITOR_QUALITY_SYSTEM},

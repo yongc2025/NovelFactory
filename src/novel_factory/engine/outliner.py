@@ -129,3 +129,101 @@ def _format_world_summary(world: list[dict] | dict) -> str:
         f"- {ws.get('category', '')}: {str(ws.get('content', ''))[:80]}"
         for ws in world
     )
+
+
+async def generate_outline_batch(
+    project_id: str,
+    topic: dict,
+    world: list[dict] | dict,
+    characters: list[dict],
+    start_chapter: int,
+    batch_size: int,
+    params: dict | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """
+    分批生成大纲
+
+    Args:
+        project_id: 项目 ID
+        topic: 选题方案
+        world: 世界观设定
+        characters: 角色列表
+        start_chapter: 起始章节号
+        batch_size: 本批生成章节数
+        params: 项目参数
+
+    Returns:
+        (new_chapters, new_foreshadows) 元组
+    """
+    params = params or {}
+    end_chapter = start_chapter + batch_size - 1
+    logger.info("开始分批生成大纲，项目: %s，第 %d-%d 章", project_id, start_chapter, end_chapter)
+
+    characters_summary = "\n".join(
+        f"- {c.get('name', '未知')}: {c.get('role', '')}, {c.get('personality', '')}"
+        for c in characters
+    )
+    world_summary = _format_world_summary(world)
+
+    # 构建节奏约束
+    rhythm_parts = []
+    chapter_word_count = params.get("chapter_word_count", 3000)
+    rhythm_parts.append(f"每章目标字数：{chapter_word_count}字（允许±100字浮动）")
+    if params.get("climax_density"):
+        density_map = {"high": "高密度爽点（每1-2章一个小爽点）", "medium": "中等密度（每3-4章一个小爽点）", "low": "低密度（重铺垫，每5-6章一个爽点）"}
+        rhythm_parts.append(f"爽点密度：{density_map.get(params['climax_density'], params['climax_density'])}")
+    if params.get("tone"):
+        rhythm_parts.append(f"内容基调：{params['tone']}")
+    if params.get("feedback"):
+        rhythm_parts.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整大纲。")
+
+    rhythm_text = "\n".join(rhythm_parts) if rhythm_parts else ""
+
+    # 已有章节上下文
+    existing_context = params.get("existing_chapters_context", "")
+    existing_foreshadows = params.get("existing_foreshadows", [])
+    foreshadow_text = ""
+    if existing_foreshadows:
+        foreshadow_text = "\n已有伏笔：\n" + "\n".join(
+            f"- {f.get('content', '')}（埋设于第{f.get('chapter', '?')}章）"
+            for f in existing_foreshadows
+        )
+
+    user_prompt = render_prompt(
+        OUTLINER_USER,
+        title=topic.get("title", "未命名"),
+        genre=topic.get("genre", params.get("genre_major", "")),
+        premise=topic.get("logline", topic.get("premise", "")),
+        word_count=params.get("target_words", topic.get("word_count", "8000")),
+        characters_summary=characters_summary,
+        world_summary=world_summary,
+        target_chapters=batch_size,
+    )
+
+    # 添加上下文信息
+    context_parts = []
+    if existing_context:
+        context_parts.append(existing_context)
+    if foreshadow_text:
+        context_parts.append(foreshadow_text)
+    if rhythm_text:
+        context_parts.append(f"节奏与策略要求：\n{rhythm_text}")
+    context_parts.append(f"\n请从第 {start_chapter} 章开始生成 {batch_size} 章大纲。")
+    context_parts.append(f"章节编号从 {start_chapter} 到 {end_chapter}。")
+
+    user_prompt += "\n\n" + "\n".join(context_parts)
+
+    messages = [
+        {"role": "system", "content": render_prompt(OUTLINER_SYSTEM, target_chapters=batch_size)},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    response = await complete(messages=messages, role="outliner", temperature=0.7, max_tokens=16384)
+
+    result = _parse_outline(response, batch_size)
+
+    # 确保章节编号正确
+    for i, ch in enumerate(result["chapters"]):
+        ch["chapter_num"] = start_chapter + i
+
+    return result["chapters"], result.get("foreshadows", [])
