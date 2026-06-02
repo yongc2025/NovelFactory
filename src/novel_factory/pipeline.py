@@ -357,7 +357,8 @@ class NovelPipeline:
         """阶段 5：场景细纲"""
         try:
             from novel_factory.engine.scene import plan_scenes
-            result = await plan_scenes(project_id, chapter)
+            char_list = characters if isinstance(characters, list) else []
+            result = await plan_scenes(project_id, chapter, char_list, params)
         except Exception as e:
             logger.error("[Pipeline] 阶段失败，使用占位数据: %s", e)
             result = await self._placeholder_scene(chapter)

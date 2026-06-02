@@ -21,9 +21,9 @@
 | 0017 | frontend-task-status | ✅ 完成 | P0 | 前端任务状态展示（useTaskPoller+右侧面板） | `tasks/0017-frontend-task-status/` |
 | 0018 | full-flow-functional-audit | 🟡 待开始 | P0 | 全流程功能审计 | `tasks/0018-full-flow-functional-audit/` |
 | 0019 | context-pipeline-fix | ✅ 完成 | P0 | 修复 prev_summary 传递链 + build_context + 摘要统一入口 | `tasks/0019-context-pipeline-fix/` |
-| 0020 | character-consistency-fix | 🟡 PENDING | P0 | 角色名硬约束 + 角色卡完整传递 + scene 角色状态注入 | `tasks/0020-character-consistency-fix/` |
-| 0021 | api-contract-unify | 🟡 PENDING | P0+P1 | ApiResponse 统一 + 消除双层嵌套 + 合并确认接口 | `tasks/0021-api-contract-unify/` |
-| 0022 | frontend-decompose | 🟡 PENDING | P0+P1 | ProjectDetail.vue 1223→<300 行拆分 + Loading 精细化 | `tasks/0022-frontend-decompose/` |
+| 0020 | character-consistency-fix | ✅ 完成 | P0 | 角色名硬约束 + 角色卡完整传递 + scene 角色状态注入 | `tasks/0020-character-consistency-fix/` |
+| 0021 | api-contract-unify | ✅ 完成 | P0+P1 | ApiResponse 统一 + 消除双层嵌套 + 合并确认接口 | `tasks/0021-api-contract-unify/` |
+| 0022 | frontend-decompose | ✅ 完成 | P0+P1 | ProjectDetail.vue 1223→<300 行拆分 + Loading 精细化 | `tasks/0022-frontend-decompose/` |
 | 0023 | foreshadow-tracking | 🟡 PENDING | P1 | 伏笔结构化（id+status）+ editor 写回 + 自动修订闭环 | `tasks/0023-foreshadow-tracking/` |
 | 0024 | state-unify-persist | 🟡 PENDING | P0+P1 | 废弃 _pipeline_states + TaskRegistry SQLite + confirming 超时 | `tasks/0024-state-unify-persist/` |
 

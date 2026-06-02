@@ -11,11 +11,16 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from novel_factory.llm.gateway import complete
-from novel_factory.llm.prompts import PLANNER_SYSTEM, PLANNER_USER, render_prompt
+from novel_factory.llm.skill_loader import SkillLoader
 
 logger = logging.getLogger(__name__)
+
+# 初始化 SkillLoader
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+skill_loader = SkillLoader(str(SKILLS_DIR))
 
 
 async def generate_proposals(
@@ -25,70 +30,28 @@ async def generate_proposals(
 ) -> list[dict]:
     """
     生成选题方案
-
-    Args:
-        inspiration: 用户的灵感输入
-        genre_hint: 题材提示
-        params: 项目创建参数（来自 ProjectCreate），包含：
-            - platforms: 目标平台
-            - length_type: 篇幅定位
-            - genre_major: 大类
-            - genre_minor: 细分题材
-            - target_audience: 目标读者
-            - tone: 内容基调
-            - protagonist_desc: 主角人设
-            - world_setting: 世界观
-            - reference_works: 参考作品
-            - forbidden_elements: 禁忌元素
-
-    Returns:
-        选题方案列表
     """
     params = params or {}
     logger.info("开始生成选题方案，灵感: %s", inspiration[:50])
 
-    # 构建丰富的上下文
-    context_parts = [f"灵感：{inspiration}"]
+    # 使用 SkillLoader 渲染
+    render_context = {
+        "inspiration": inspiration,
+        "genre_hint": genre_hint or "未指定",
+        "params": params,
+    }
 
-    if genre_hint:
-        context_parts.append(f"题材偏好：{genre_hint}")
-    if params.get("genre_major"):
-        context_parts.append(f"题材大类：{params['genre_major']}")
-    if params.get("genre_minor"):
-        context_parts.append(f"细分题材：{params['genre_minor']}")
-    if params.get("target_audience") and params["target_audience"] != "general":
-        audience = "女频" if params["target_audience"] == "female" else "男频"
-        context_parts.append(f"目标读者：{audience}")
-    if params.get("tone"):
-        context_parts.append(f"内容基调：{params['tone']}")
-    if params.get("platforms"):
-        context_parts.append(f"目标平台：{', '.join(params['platforms'])}")
-    if params.get("length_type"):
-        length_map = {"short": "短篇(3000-8000字)", "medium": "中篇(5-20万字)", "long": "长篇(20万字以上)", "comic": "漫剧(60-100集)"}
-        context_parts.append(f"篇幅定位：{length_map.get(params['length_type'], params['length_type'])}")
-    if params.get("protagonist_desc"):
-        context_parts.append(f"主角设定：{params['protagonist_desc']}")
-    if params.get("world_setting"):
-        context_parts.append(f"世界观：{params['world_setting']}")
-    if params.get("reference_works"):
-        context_parts.append(f"参考作品：{params['reference_works']}")
-    if params.get("forbidden_elements"):
-        context_parts.append(f"禁忌元素：{', '.join(params['forbidden_elements'])}")
-    if params.get("feedback"):
-        context_parts.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整选题方案。")
-
-    genre_text = "\n".join(context_parts[1:])  # 除灵感外的所有上下文
-
-    user_prompt = render_prompt(
-        PLANNER_USER,
-        inspiration=inspiration,
-        genre_hint=genre_text,
-    )
+    system_prompt, user_prompt = skill_loader.render("planner", render_context)
 
     messages = [
-        {"role": "system", "content": PLANNER_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+
+    response = await complete(messages=messages, role="planner", temperature=0.7, max_tokens=4096)
+
+    return _parse_proposals(response)
+
 
     response = await complete(messages=messages, role="planner", temperature=0.7, max_tokens=4096)
 

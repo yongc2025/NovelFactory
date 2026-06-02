@@ -21,7 +21,7 @@ GENRE_MATRIX: dict[str, list[str]] = {
     "年代": ["70-80年代", "90年代经商", "年代重生"],
     "都市": ["校园", "职场", "家庭伦理", "情感婚姻", "学霸/科研"],
     "男频": ["玄幻修仙", "都市异能", "游戏竞技", "科幻机甲", "历史架空", "末日求生"],
-    "其他": ["自定义（请在 world_custom 中描述）"],
+    "其他": ["自定义"],
 }
 
 # 篇幅→默认参数映射
@@ -222,9 +222,28 @@ class ChapterResponse(BaseModel):
 
 
 class CharacterResponse(BaseModel):
-    """角色响应"""
+    """单角色详情"""
+    id: str
+    name: str
+    role: str
+    personality: str | None = None
+    appearance: str | None = None
+    background: str | None = None  # 兼容旧字段
+    core_desire: str | None = None
+    core_fear: str | None = None
+    fatal_flaw: str | None = None
+    wound: str | None = None
+    speaking_style: str | None = None
+    arc: str | None = None
+    arc_description: str | None = None
+    traits: list[str] = Field(default_factory=list)
+    relationships: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CharacterListResponse(BaseModel):
+    """角色列表响应"""
     project_id: str
-    characters: dict[str, Any] | list[dict[str, Any]]
+    characters: list[CharacterResponse]
 
 
 class ReviewResponse(BaseModel):

@@ -45,6 +45,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '大纲编辑', tab: 'outline' },
   },
   {
+    path: '/projects/:id/scene',
+    name: 'ProjectScene',
+    component: () => import('@/views/ProjectDetail.vue'),
+    meta: { title: '场景细纲', tab: 'scene' },
+  },
+  {
     path: '/projects/:id/metadata',
     name: 'ProjectMetadata',
     component: () => import('@/views/ProjectDetail.vue'),

@@ -57,10 +57,11 @@ export interface Project {
   sub_genre?: string
   status: ProjectStatus
   inspiration: string
-  platform: string
-  platforms?: string[]
-  word_count_target: number
-  target_words?: number
+  platform?: string        // 兼容旧字段
+  platforms: string[]       // 对应后端 target_platforms
+  word_count_target?: number
+  target_words: number
+  target_chapters?: number
   current_stage: PipelineStage
   created_at: string
   updated_at: string
@@ -164,7 +165,14 @@ export interface Character {
   personality: string
   appearance: string
   relationships: CharacterRelationship[]
-  arc: string
+  // 12维灵魂属性
+  core_desire?: string      // 核心欲望
+  core_fear?: string        // 核心恐惧
+  fatal_flaw?: string       // 致命弱点
+  wound?: string            // 原始伤口
+  speaking_style?: string   // 说话风格
+  arc?: string              // 弧光/变化 (兼容字段)
+  arc_description?: string  // 弧光总述
   created_at: string
 }
 
@@ -176,25 +184,33 @@ export interface CharacterRelationship {
   description: string
 }
 
+export interface ForeshadowOp {
+  id?: string | number
+  action: 'plant' | 'callback' | 'progress' | 'update' | string
+  content: string
+}
+
 /** 大纲 */
 export interface Outline {
   id: string
   project_id: string
   total_chapters: number
   chapters: OutlineChapter[]
+  foreshadows?: any[]
   created_at: string
 }
 
 /** 大纲章节 */
 export interface OutlineChapter {
-  chapter_number: number
+  chapter_num: number        // 对应后端字段
+  chapter_number?: number    // 兼容前端旧逻辑
   title: string
   core_event: string
   characters_present: string[]
   emotion_position?: string
   emotion_arc?: string
   hook?: string
-  foreshadow_ops: string[]
+  foreshadow_ops: (string | ForeshadowOp)[]
   plot_lines_progress?: Record<string, string>
   // 兼容旧数据
   summary?: string

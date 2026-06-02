@@ -6,17 +6,16 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from novel_factory.llm.gateway import complete
-from novel_factory.llm.prompts import (
-    EDITOR_QUALITY_SYSTEM,
-    EDITOR_QUALITY_USER,
-    EDITOR_RULES_SYSTEM,
-    EDITOR_RULES_USER,
-    render_prompt,
-)
+from novel_factory.llm.skill_loader import SkillLoader
 
 logger = logging.getLogger(__name__)
+
+# 初始化 SkillLoader
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+skill_loader = SkillLoader(str(SKILLS_DIR))
 
 
 async def review_chapter(
@@ -30,74 +29,30 @@ async def review_chapter(
 ) -> dict:
     """
     审校一章
-
-    Args:
-        project_id: 项目 ID
-        chapter: 章节大纲
-        draft: 正文初稿
-        characters: 角色列表
-        foreshadows: 伏笔列表
-        prev_summary: 前文摘要（0019 修复）
-        prev_issues: 前几章已知问题列表（0019 修复）
-
-    Returns:
-        审校报告 dict
     """
     logger.info("开始审校，章节: %s", chapter.get("title", "未知"))
 
-    characters_info = "\n".join(
-        f"- {c.get('name', '未知')}: {c.get('role', '')}, {c.get('personality', '')}"
-        for c in (characters or [])
-    )
-    foreshadows_status = "\n".join(
-        f"- [{f.get('status', '未知')}] {f.get('content', '')}"
-        for f in (foreshadows or [])
-    ) or "（暂无伏笔）"
+    # 准备 SkillLoader 渲染上下文
+    render_context = {
+        "chapter": chapter,
+        "draft": draft,
+        "characters": characters or [],
+        "foreshadows": foreshadows or [],
+        "prev_summary": prev_summary or "无",
+        "prev_issues": prev_issues or [],
+    }
 
-    # 0019: 前文上下文段落
-    prev_context = ""
-    if prev_summary:
-        prev_context += f"\n【前文摘要】\n{prev_summary}\n"
-    if prev_issues:
-        issues_str = "\n".join(
-            f"- {i.get('type', '')}: {i.get('description', '')}"
-            for i in prev_issues[:10]
-        )
-        prev_context += f"\n【前几章已知问题（本章需避免重犯）】\n{issues_str}\n"
+    system_prompt, user_prompt = skill_loader.render("editor", render_context)
 
-    # 第一轮：规则检查
-    rules_prompt = render_prompt(
-        EDITOR_RULES_USER,
-        chapter_title=chapter.get("title", ""),
-        core_event=chapter.get("core_event", ""),
-        characters_info=characters_info,
-        foreshadows_status=foreshadows_status,
-        chapter_draft=draft,
-    )
-    if prev_context:
-        rules_prompt = prev_context + "\n" + rules_prompt
-
-    rules_messages = [
-        {"role": "system", "content": EDITOR_RULES_SYSTEM},
-        {"role": "user", "content": rules_prompt},
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
     ]
 
-    rules_response = await complete(messages=rules_messages, role="editor_rules", temperature=0.1, max_tokens=2048)
+    response = await complete(messages=messages, role="editor", temperature=0.1, max_tokens=4096)
 
-    # 第二轮：质量评估
-    quality_prompt = render_prompt(
-        EDITOR_QUALITY_USER,
-        chapter_title=chapter.get("title", ""),
-        emotion_position=chapter.get("emotion_position", ""),
-        emotion_arc=chapter.get("emotion_arc", ""),
-        chapter_draft=draft,
-        word_count=len(draft),
-    )
-    if prev_context:
-        quality_prompt = prev_context + "\n" + quality_prompt
+    return _parse_review(response)
 
-    quality_messages = [
-        {"role": "system", "content": EDITOR_QUALITY_SYSTEM},
         {"role": "user", "content": quality_prompt},
     ]
 

@@ -99,6 +99,39 @@
    - 是否存在典型的 AI 写作痕迹（如过度使用"然而"、"不禁"等）？
    - 对话是否像真人说话？
 
+## System Prompt
+
+你是一位资深文学编辑。你的任务是对小说初稿进行严苛的审校和质量评估。
+
+### 审校准则
+
+1. **一致性检查**: 角色名、时间、地点、逻辑不能出错。
+2. **底层逻辑自检**: 检核本章是否完成了伤口、欲望、障碍的表达。
+3. **去除AI味**: 识别并标记空洞的辞藻或老掉牙的套路。
+
+### 输出清单
+
+- `summary`: 本章剧情摘要
+- `issues`: 发现的问题列表，每个问题包含 `type`, `severity`, `description`, `suggestion`
+- `scores`: 各维度评分 (1-10)
+  - `consistency`, `emotion`, `narrative`, `dialogue`
+- `foreshadow_update`: 伏笔状态更新建议
+
+## User Prompt
+
+项目上下文:
+
+- 章节大纲: {{ chapter }}
+- 正文初稿: {{ draft }}
+- 角色列表: {{ characters }}
+- 伏笔状态: {{ foreshadows }}
+- 前文摘要: {{ prev_summary }}
+
+请对本章初稿进行深度审校。先指出硬性逻辑错误，再评估艺术质量，并给出修改建议。
+
+输出格式要求：
+必须输出 JSON 对象，包含上述清单的所有字段。
+
 8. **金句密度**
    - 是否有让人印象深刻的句子？
    - 金句分布是否均匀？
@@ -129,18 +162,18 @@
 
 ### 字段说明
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `rules_check.pass` | boolean | 第一轮规则检查是否通过 |
-| `rules_check.issues` | string[] | 发现的问题列表，每条问题需具体描述 |
-| `quality_review.protagonist_line` | string | 主角线评估文字 |
-| `quality_review.plot_line` | string | 情节线评估文字 |
-| `quality_review.info_line` | string | 信息线评估文字 |
-| `quality_review.conflict_line` | string | 冲突线评估文字 |
-| `quality_review.emotion_line` | string | 情绪线评估文字 |
-| `quality_review.foreshadow_line` | string | 伏笔线评估文字 |
-| `quality_review.overall_score` | number | 综合质量评分（1-10） |
-| `quality_review.suggestions` | string[] | 具体改进建议 |
+| 字段                              | 类型     | 说明                               |
+| --------------------------------- | -------- | ---------------------------------- |
+| `rules_check.pass`                | boolean  | 第一轮规则检查是否通过             |
+| `rules_check.issues`              | string[] | 发现的问题列表，每条问题需具体描述 |
+| `quality_review.protagonist_line` | string   | 主角线评估文字                     |
+| `quality_review.plot_line`        | string   | 情节线评估文字                     |
+| `quality_review.info_line`        | string   | 信息线评估文字                     |
+| `quality_review.conflict_line`    | string   | 冲突线评估文字                     |
+| `quality_review.emotion_line`     | string   | 情绪线评估文字                     |
+| `quality_review.foreshadow_line`  | string   | 伏笔线评估文字                     |
+| `quality_review.overall_score`    | number   | 综合质量评分（1-10）               |
+| `quality_review.suggestions`      | string[] | 具体改进建议                       |
 
 ### 评分标准
 

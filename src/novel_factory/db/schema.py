@@ -1,4 +1,4 @@
-﻿"""寤鸿〃 DDL 鈥?鍙傜収 docs/system-architecture.md 涓殑鏁版嵁妯″瀷銆?""
+﻿"""Database Schema DDL."""
 
 from __future__ import annotations
 
@@ -155,6 +155,50 @@ CREATE TABLE IF NOT EXISTS publications (
 );
 """
 
+DDL_TASKS = """
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(id),
+    stage TEXT,
+    status TEXT,
+    cancel_requested BOOLEAN DEFAULT 0,
+    progress_current INT DEFAULT 0,
+    progress_total INT DEFAULT 0,
+    progress_label TEXT,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    result TEXT,
+    error TEXT,
+    params TEXT
+);
+"""
+
+DDL_PIPELINE_STATES = """
+CREATE TABLE IF NOT EXISTS pipeline_states (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id),
+    current_stage TEXT,
+    current_stage_label TEXT,
+    progress_percent REAL,
+    total_stages INT,
+    completed_stages INT,
+    needs_confirmation BOOLEAN DEFAULT 0,
+    status TEXT,
+    error TEXT,
+    updated_at TIMESTAMP
+);
+"""
+
+DDL_STAGE_STATES = """
+CREATE TABLE IF NOT EXISTS stage_states (
+    project_id TEXT,
+    stage TEXT,
+    status TEXT,
+    updated_at TIMESTAMP,
+    PRIMARY KEY (project_id, stage),
+    FOREIGN KEY (project_id) REFERENCES projects (id)
+);
+"""
+
 ALL_DDL: list[str] = [
     DDL_PROJECTS,
     DDL_WORLD_SETTINGS,
@@ -165,14 +209,15 @@ ALL_DDL: list[str] = [
     DDL_SCENES,
     DDL_EPISODES,
     DDL_PUBLICATIONS,
+    DDL_TASKS,
+    DDL_PIPELINE_STATES,
+    DDL_STAGE_STATES,
 ]
 
 
 def init_db() -> None:
     """
-    鍒濆鍖栨暟鎹簱 鈥?鎵ц鎵€鏈夊缓琛?DDL銆?
-
-    鍙噸澶嶈皟鐢紝浣跨敤 IF NOT EXISTS 淇濊瘉骞傜瓑銆?
+    Init DB - run all DDLs.
     """
     with get_connection() as conn:
         for ddl in ALL_DDL:

@@ -1,48 +1,54 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Input, Button, message } from 'ant-design-vue'
-import { BulbOutlined, LoadingOutlined } from '@ant-design/icons-vue'
-import { STEP_HINTS } from './presets'
-import http from '@/api'
+import { computed, ref } from "vue";
+import { Input, Button, message } from "ant-design-vue";
+import { BulbOutlined, LoadingOutlined } from "@ant-design/icons-vue";
+import { STEP_HINTS } from "./presets";
+import http from "@/api";
 
 const props = defineProps<{
-  freeText: string
-  gender?: 'male' | 'female' | 'both' | null
-  genreName?: string
-}>()
+  freeText: string;
+  gender?: "male" | "female" | "both" | null;
+  genreName?: string;
+}>();
 
 const emit = defineEmits<{
-  'update:freeText': [value: string]
-}>()
+  "update:freeText": [value: string];
+}>();
 
-const hint = STEP_HINTS.conflict
+const hint = STEP_HINTS.conflict;
 
 // 结构化字段
 const fields = ref({
-  identity: '',    // 主角身份
-  job: '',         // 职业
-  personality: '', // 性格特点
-  event: '',       // 发生了什么
-  goal: '',        // 主角想做什么
-  obstacle: '',    // 什么在阻碍他
-})
+  identity: "", // 主角身份
+  job: "", // 职业
+  personality: "", // 性格特点
+  event: "", // 发生了什么
+  goal: "", // 主角想做什么
+  obstacle: "", // 什么在阻碍他
+});
 
 // 从 freeText 初始化字段（如果已有内容）
 function parseFromText(text: string) {
-  if (!text) return
-  const lines = text.split('\n')
+  if (!text) return;
+  const lines = text.split("\n");
   for (const line of lines) {
-    if (line.includes('主角身份：')) fields.value.identity = line.split('：')[1]?.trim() || ''
-    if (line.includes('职业：')) fields.value.job = line.split('：')[1]?.trim() || ''
-    if (line.includes('性格特点：')) fields.value.personality = line.split('：')[1]?.trim() || ''
-    if (line.includes('发生了什么：')) fields.value.event = line.split('：')[1]?.trim() || ''
-    if (line.includes('主角想做什么：')) fields.value.goal = line.split('：')[1]?.trim() || ''
-    if (line.includes('什么在阻碍他：')) fields.value.obstacle = line.split('：')[1]?.trim() || ''
+    if (line.includes("主角身份："))
+      fields.value.identity = line.split("：")[1]?.trim() || "";
+    if (line.includes("职业："))
+      fields.value.job = line.split("：")[1]?.trim() || "";
+    if (line.includes("性格特点："))
+      fields.value.personality = line.split("：")[1]?.trim() || "";
+    if (line.includes("发生了什么："))
+      fields.value.event = line.split("：")[1]?.trim() || "";
+    if (line.includes("主角想做什么："))
+      fields.value.goal = line.split("：")[1]?.trim() || "";
+    if (line.includes("什么在阻碍他："))
+      fields.value.obstacle = line.split("：")[1]?.trim() || "";
   }
 }
 
 // 初始化
-parseFromText(props.freeText)
+parseFromText(props.freeText);
 
 // 同步字段到 freeText
 function syncToText() {
@@ -53,45 +59,48 @@ function syncToText() {
     `发生了什么：${fields.value.event}`,
     `主角想做什么：${fields.value.goal}`,
     `什么在阻碍他：${fields.value.obstacle}`,
-  ]
-  emit('update:freeText', lines.join('\n'))
+  ];
+  emit("update:freeText", lines.join("\n"));
 }
 
 // AI 生成
-const aiLoading = ref(false)
+const aiLoading = ref(false);
 async function generateByAI() {
-  aiLoading.value = true
+  aiLoading.value = true;
   try {
-    const res = await http.post('/generate/inspiration', {
-      gender: props.gender || 'male',
-      genre_name: props.genreName || '',
-      story_background: props.freeText || '请根据题材生成一个故事梗概',
-      style_text: '',
-    })
-    const data = res.data.data ?? res.data
-    const version = data.versions?.[0]
+    const res = await http.post("/generate/inspiration", {
+      gender: props.gender || "male",
+      genre_name: props.genreName || "",
+      story_background: props.freeText || "请根据题材生成一个故事梗概",
+      style_text: "",
+    });
+    const data = res.data.data ?? res.data;
+    const version = data.versions?.[0];
     if (version?.synopsis) {
       // 将 AI 生成的 synopsis 解析到字段中
-      const text = version.synopsis
-      emit('update:freeText', text)
+      const text = version.synopsis;
+      emit("update:freeText", text);
       // 尝试从 AI 输出中提取字段
-      const lines = text.split('\n')
+      const lines = text.split("\n");
       for (const line of lines) {
-        if (line.includes('身份') || line.includes('是')) fields.value.identity = line.slice(0, 30)
+        if (line.includes("身份") || line.includes("是"))
+          fields.value.identity = line.slice(0, 30);
       }
-      message.success('AI 已生成，请检查并调整')
+      message.success("AI 已生成，请检查并调整");
     }
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '生成失败，请重试')
+    message.error(e.response?.data?.detail || "生成失败，请重试");
   } finally {
-    aiLoading.value = false
+    aiLoading.value = false;
   }
 }
 
 const isComplete = computed(() => {
-  return fields.value.identity.trim().length > 0 || props.freeText.trim().length > 0
-})
-defineExpose({ isComplete })
+  return (
+    fields.value.identity.trim().length > 0 || props.freeText.trim().length > 0
+  );
+});
+defineExpose({ isComplete });
 </script>
 
 <template>
@@ -107,29 +116,49 @@ defineExpose({ isComplete })
         <div class="field-label">{{ field.icon }} {{ field.label }}</div>
         <Input
           v-if="field.label === '主角是谁？'"
-          v-model:value="fields.identity"
-          @update:value="syncToText"
+          :value="fields.identity"
+          @update:value="
+            (v: string) => {
+              fields.identity = v;
+              syncToText();
+            }
+          "
           :placeholder="field.hint"
           class="field-input"
         />
         <Input
           v-else-if="field.label === '发生了什么？'"
-          v-model:value="fields.event"
-          @update:value="syncToText"
+          :value="fields.event"
+          @update:value="
+            (v: string) => {
+              fields.event = v;
+              syncToText();
+            }
+          "
           :placeholder="field.hint"
           class="field-input"
         />
         <Input
           v-else-if="field.label === '主角想做什么？'"
-          v-model:value="fields.goal"
-          @update:value="syncToText"
+          :value="fields.goal"
+          @update:value="
+            (v: string) => {
+              fields.goal = v;
+              syncToText();
+            }
+          "
           :placeholder="field.hint"
           class="field-input"
         />
         <Input
           v-else-if="field.label === '什么在阻碍他？'"
-          v-model:value="fields.obstacle"
-          @update:value="syncToText"
+          :value="fields.obstacle"
+          @update:value="
+            (v: string) => {
+              fields.obstacle = v;
+              syncToText();
+            }
+          "
           :placeholder="field.hint"
           class="field-input"
         />
@@ -138,11 +167,31 @@ defineExpose({ isComplete })
       <!-- 补充字段 -->
       <div class="field-row">
         <div class="field-label">💼 职业</div>
-        <Input v-model:value="fields.job" @update:value="syncToText" placeholder="如：程序员、医生、学生..." class="field-input" />
+        <Input
+          :value="fields.job"
+          @update:value="
+            (v: string) => {
+              fields.job = v;
+              syncToText();
+            }
+          "
+          placeholder="如：程序员、医生、学生..."
+          class="field-input"
+        />
       </div>
       <div class="field-row">
         <div class="field-label">🎭 性格特点</div>
-        <Input v-model:value="fields.personality" @update:value="syncToText" placeholder="如：毒舌、逗逼、高冷..." class="field-input" />
+        <Input
+          :value="fields.personality"
+          @update:value="
+            (v: string) => {
+              fields.personality = v;
+              syncToText();
+            }
+          "
+          placeholder="如：毒舌、逗逼、高冷..."
+          class="field-input"
+        />
       </div>
     </div>
 
@@ -156,7 +205,8 @@ defineExpose({ isComplete })
           class="ai-btn"
           size="small"
         >
-          <BulbOutlined v-if="!aiLoading" /> {{ aiLoading ? 'AI 生成中...' : '🤖 AI 帮我生成' }}
+          <BulbOutlined v-if="!aiLoading" />
+          {{ aiLoading ? "AI 生成中..." : "🤖 AI 帮我生成" }}
         </Button>
       </div>
       <Input.TextArea
@@ -233,7 +283,11 @@ defineExpose({ isComplete })
 }
 
 .ai-btn {
-  background: linear-gradient(135deg, rgba(108, 92, 231, 0.15), rgba(162, 155, 254, 0.1));
+  background: linear-gradient(
+    135deg,
+    rgba(108, 92, 231, 0.15),
+    rgba(162, 155, 254, 0.1)
+  );
   border: 1px solid rgba(108, 92, 231, 0.3);
   color: #a29bfe;
   border-radius: 16px;

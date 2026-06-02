@@ -18,6 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # ── 日志配置 ──────────────────────────────────────────────────
@@ -59,15 +61,15 @@ logger.addHandler(_console)
 logger.propagate = False
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-
 from novel_factory.api.deps import get_pipeline, get_store, get_context_store
 from novel_factory.api.task_registry import registry
+from novel_factory.db.pipeline_store import pipeline_store
 from novel_factory.api.schemas import (
     GENRE_MATRIX,
     BookMetadata,
     ChapterResponse,
     CharacterResponse,
+    CharacterListResponse,
     ConfigResponse,
     ConfigUpdateRequest,
     ConfirmRequest,
@@ -97,17 +99,8 @@ STAGES = [
     ("review", "编辑审校"),
 ]
 
-# ── 流水线状态内存存储（进程内） ────────────────────────────
-
-# project_id -> PipelineStatus 数据
-_pipeline_states: dict[str, dict[str, Any]] = {}
-
-# ── 阶段状态追踪（进程内） ─────────────────────────────────
-# project_id -> {stage_name: StageInfo}
-_stage_states: dict[str, dict[str, dict[str, Any]]] = {}
-
 # 所有阶段列表（与流水线一致）
-_ALL_STAGES = ["topic", "world", "character", "outline", "metadata", "scene", "draft", "review"]
+_ALL_STAGES = [s[0] for s in STAGES]
 
 
 def _selected_topic(topic_data: dict | list | None) -> dict:
@@ -120,50 +113,26 @@ def _selected_topic(topic_data: dict | list | None) -> dict:
 
 
 def _get_stage_states(project_id: str) -> dict[str, dict[str, Any]]:
-    """获取或初始化项目的阶段状态"""
-    if project_id not in _stage_states:
-        _stage_states[project_id] = {
-            stage: {"status": "pending", "updated_at": None}
-            for stage in _ALL_STAGES
-        }
-    return _stage_states[project_id]
+    """获取项目的阶段状态"""
+    return pipeline_store.get_stage_states(project_id)
 
 
 def _update_stage_state(project_id: str, stage: str, status: str) -> None:
-    """更新某个阶段的状态和时间戳"""
-    states = _get_stage_states(project_id)
-    if stage in states:
-        states[stage]["status"] = status
-        states[stage]["updated_at"] = datetime.now().isoformat()
+    """更新某个阶段的状态"""
+    pipeline_store.update_stage_state(project_id, stage, status)
 
 
 def _get_or_create_state(project_id: str) -> dict[str, Any]:
     """获取或创建流水线状态"""
-    if project_id not in _pipeline_states:
-        _pipeline_states[project_id] = {
-            "project_id": project_id,
-            "current_stage": None,
-            "current_stage_label": None,
-            "progress_percent": 0.0,
-            "total_stages": len(STAGES),
-            "completed_stages": 0,
-            "needs_confirmation": False,
-            "status": "idle",
-            "error": None,
-            "updated_at": datetime.now().isoformat(),
-        }
-    return _pipeline_states[project_id]
+    state = pipeline_store.get_pipeline_state(project_id)
+    if not state:
+        state = pipeline_store.update_pipeline_state(project_id, total_stages=len(STAGES))
+    return state
 
 
 def _update_state(project_id: str, **kwargs: Any) -> None:
     """更新流水线状态"""
-    state = _get_or_create_state(project_id)
-    state.update(kwargs)
-    state["updated_at"] = datetime.now().isoformat()
-    if state["total_stages"] > 0:
-        state["progress_percent"] = round(
-            state["completed_stages"] / state["total_stages"] * 100, 1
-        )
+    pipeline_store.update_pipeline_state(project_id, **kwargs)
 
 
 # ── 创建 FastAPI 应用 ───────────────────────────────────────
@@ -280,22 +249,24 @@ async def get_project(project_id: str):
 
 @app.delete("/api/projects/{project_id}", status_code=204)
 async def delete_project(project_id: str):
-    """删除项目（移动到回收站或直接删除）"""
+    """删除项目"""
     store = get_store()
     if not store.project_exists(project_id):
         raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
 
-    # 清理流水线状态
-    _pipeline_states.pop(project_id, None)
+    # 1. 清理流水线状态 (DB)
+    from novel_factory.db.connection import get_connection
+    with get_connection() as conn:
+        conn.execute("DELETE FROM tasks WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM pipeline_states WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM stage_states WHERE project_id = ?", (project_id,))
 
-    # 删除项目目录
+    # 2. 删除目录与索引
     import shutil
-
     project_dir = store.get_project_dir(project_id)
     if project_dir.exists():
         shutil.rmtree(project_dir)
 
-    # 从索引中移除
     index = store._load_index()
     index.pop(project_id, None)
     store._save_index(index)
@@ -735,6 +706,8 @@ async def _execute_stage_task(task) -> None:
             store.save_review(project_id, {"chapters": all_reviews, "total_chapters": len(chapters)})
 
         await registry.transition(task.id, "success")
+        # 更新阶段持久化状态
+        _update_stage_state(project_id, stage, "completed")
         # 同步旧状态（兼容其他端点）
         _update_state(project_id, status="confirming", current_stage=stage,
                        current_stage_label=dict(STAGES).get(stage, stage),
@@ -742,6 +715,7 @@ async def _execute_stage_task(task) -> None:
         logger.info("阶段 [%s] 完成: %s", stage, project_id)
     except Exception as e:
         await registry.transition(task.id, "failed", error=str(e))
+        _update_stage_state(project_id, stage, "failed")
         _update_state(project_id, status="failed", error=str(e))
         logger.error("阶段 [%s] 失败: %s: %s", stage, project_id, e, exc_info=True)
 
@@ -797,27 +771,38 @@ async def pipeline_status(project_id: str):
 
 
 def _build_stages_list(state: dict) -> list[dict]:
-    """从扁平状态生成前端需要的 stages 数组"""
-    completed = state.get("completed_stages", 0)
-    current = state.get("current_stage")
+    """从 DB 和扁平状态生成前端需要的 stages 数组"""
+    project_id = state["project_id"]
+    db_states = pipeline_store.get_stage_states(project_id)
+    
+    completed_count = state.get("completed_stages", 0)
+    current_key = state.get("current_stage")
     pipeline_status = state.get("status", "idle")
+    
     stages = []
     for i, (stage_key, stage_label) in enumerate(STAGES):
-        if i < completed:
+        # 优先使用数据库中记录的阶段状态
+        db_info = db_states.get(stage_key, {})
+        s = db_info.get("status", "pending")
+        
+        # 运行时状态叠加
+        if stage_key == current_key:
+            if pipeline_status == "running":
+                s = "running"
+            elif pipeline_status == "confirming":
+                s = "waiting_confirm"
+            elif pipeline_status == "failed":
+                s = "failed"
+        elif i < completed_count and s == "pending":
+            # 如果索引在已完成范围内且数据库没记录，兜底设为已完成
             s = "completed"
-        elif stage_key == current and pipeline_status == "running":
-            s = "running"
-        elif stage_key == current and pipeline_status == "confirming":
-            s = "waiting_confirm"
-        elif stage_key == current and pipeline_status == "failed":
-            s = "failed"
-        else:
-            s = "pending"
+            
         stages.append({
             "stage": stage_key,
             "status": s,
             "progress": 100.0 if s == "completed" else (50.0 if s == "running" else 0.0),
-            "error": state.get("error") if s == "failed" else None,
+            "updated_at": db_info.get("updated_at"),
+            "error": state.get("error") if s == "failed" and stage_key == current_key else None,
         })
     return stages
 
@@ -860,6 +845,7 @@ async def pipeline_confirm(project_id: str, body: ConfirmRequest):
 
     if action == "adopt":
         # 采用：标记当前阶段完成，更新状态
+        _update_stage_state(project_id, current_stage, "completed")
         stage_idx = next(
             (i for i, (k, _) in enumerate(STAGES) if k == current_stage), 0
         )
@@ -990,30 +976,52 @@ def _normalize_world(world_list: list) -> dict:
     return result
 
 
-@app.get("/api/projects/{project_id}/characters", response_model=CharacterResponse)
+@app.get("/api/projects/{project_id}/characters", response_model=CharacterListResponse)
 async def get_characters(project_id: str):
     """获取角色列表"""
     store = get_store()
     if not store.project_exists(project_id):
         raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
     characters = store.get_characters(project_id)
-    if isinstance(characters, list):
-        characters = [_normalize_character(c, i) for i, c in enumerate(characters)]
-    return CharacterResponse(project_id=project_id, characters=characters or {})
+    if not isinstance(characters, list):
+        characters = []
+    
+    normalized = [_normalize_character(c, i) for i, c in enumerate(characters)]
+    return CharacterListResponse(project_id=project_id, characters=normalized)
 
 
 def _normalize_character(char: dict, index: int) -> dict:
     """将后端角色格式转为前端期望的格式"""
+    # 处理 Pydantic 模型或字典
+    if hasattr(char, "model_dump"):
+        char = char.model_dump()
+    
+    # 解析 JSON 字段
+    def _parse_json(val, default):
+        if not val: return default
+        if isinstance(val, (list, dict)): return val
+        try:
+            import json
+            return json.loads(val)
+        except:
+            return default
+
     return {
         "id": char.get("id", f"char_{index}"),
         "name": char.get("name", ""),
         "role": char.get("role", "supporting"),
-        "personality": char.get("personality", ""),
+        "personality": char.get("personality_surface", char.get("personality", "")),
         "appearance": char.get("appearance", ""),
-        "background": char.get("core_desire", char.get("background", "")),
+        "background": char.get("background", ""), 
+        "core_desire": char.get("core_desire", ""),
+        "core_fear": char.get("core_fear", ""),
+        "fatal_flaw": char.get("fatal_flaw", ""),
+        "wound": char.get("wound", ""),
+        "speaking_style": char.get("speaking_style", char.get("voice_style", "")),
         "arc": char.get("arc_description", char.get("arc", "")),
-        "traits": char.get("traits", []),
-        "relationships": char.get("relationships", []),
+        "arc_description": char.get("arc_description", ""),
+        "traits": _parse_json(char.get("traits"), []),
+        "relationships": _parse_json(char.get("relation_summary"), []),
     }
 
 
@@ -1148,11 +1156,19 @@ def _normalize_outline(outline: dict) -> dict:
     for ch in chapters:
         normalized.append({
             "chapter_number": ch.get("chapter_num", ch.get("chapter_number", 0)),
+            "chapter_num": ch.get("chapter_num", ch.get("chapter_number", 0)), # 双重兼容
             "title": ch.get("title", ""),
-            "summary": ch.get("core_event", ch.get("summary", "")),
+            "core_event": ch.get("core_event", ch.get("summary", "")),
+            "summary": ch.get("core_event", ch.get("summary", "")), # 双重兼容
             "key_events": ch.get("key_events", []),
+            "characters_present": ch.get("characters_present", []),
             "pov_character": ch.get("pov_character", ""),
             "word_count_target": ch.get("word_count_target", 2500),
+            "hook": ch.get("hook", ""),
+            "foreshadow_ops": ch.get("foreshadow_ops", []),
+            "emotion_position": ch.get("emotion_position", ""),
+            "emotion_arc": ch.get("emotion_arc", ""),
+            "plot_lines_progress": ch.get("plot_lines_progress", {}),
         })
     return {
         "total_chapters": outline.get("total_chapters", len(normalized)),

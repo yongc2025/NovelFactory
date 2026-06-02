@@ -1,163 +1,57 @@
 # NovelFactory AI Agent 操作手册
 
-> **强制引用**: 本项目严格遵循 [d:/workspace/vibe-coding-cn/AGENTS.md](d:/workspace/vibe-coding-cn/AGENTS.md)。
-> 在未阅读父级指南前，严禁执行任何实质性操作。
+## 1. 核心定位
+**NovelFactory — 一个人的自动化小说工厂**
+从灵感出发，通过 AI 角色协作生成全平台内容（小红书/番茄/短剧）。用户负责审核决策，AI 负责规模化生产。
 
 ---
 
-## 1. 项目定位
-
-**NovelFactory — 自动化小说工厂**
-
-一个人的内容工厂：从一个想法，到全平台分发的多形态内容。
-
-当前阶段以：
-- 叙事引擎（选题→世界观→角色→大纲→正文→审校）
-- 多模型调用（DeepSeek V4 Pro/Flash + MiMo）
-- 参数化创建（26个创建参数）
-- CLI + Web UI
-  为核心目标。
-
-当前阶段**不做**：
-- 自动发布到平台（先手动发布）
-- 多用户/团队协作
-- 付费系统
+## 2. 行为禁令（红线）
+- **禁止提交密钥**：严禁在代码或文档中提交任何明文 API Key (使用 `.env`)。
+- **禁止无任务开发**：严禁在没有 Task Bundle（`tasks/`）或明确验收标准时编写核心逻辑。
+- **禁止越权重构**：严禁“顺手”重构大范围代码，除非任务明确要求修复技术债务。
+- **禁止跳过规范**：严禁违反下述硬性指标，超标必须重构。
 
 ---
 
-## 2. 允许的操作
-
-- 修改 `src/novel_factory/` 下的 Python 代码（必须包含 Type Hints）。
-- 修改 `web/src/` 下的 Vue/TypeScript 代码。
-- 在 `tasks/` 下创建新的 Task Bundle（CONTEXT/PLAN/ACCEPTANCE/STATUS/TODO）。
-- 增量更新 `docs/` 下的文档。
-- 接入并维护 `.workflow/auto-dev-loop/` 全自动化开发流程。
-- 编写研究、设计、验证类文档。
-
-## 3. 禁止的操作
-
-- 禁止在仓库中提交任何明文 API Key / Secret / Token（使用 .env）。
-- 禁止删除或大规模重写 `docs/` 历史记录。
-- 禁止在没有任务包与明确验收标准时扩写核心引擎。
-- 禁止"顺手重构/大范围改动"除非任务明确要求。
-
-## 4. 黄金路径
-
-- 读取 `tasks/INDEX.md` 锁定当前任务上下文。
-- 使用 `tasks` 作为默认自动化开发主流程。
-- 每个实质性任务都先创建或更新任务包。
-- 先写规格，再写代码，再做验证，再同步进度。
-
-## 5. 技术准则
-
-### 后端 (Python)
-- Python 3.11+
-- 强制 Type Hints
-- Google Style Docstring（中文）
-- Ruff lint
-- 行宽 120 列
-- 异步优先（async/await）
-
-### 前端 (Vue)
-- Vue 3 + Vite + TypeScript
-- Ant Design Vue 4.x
-- Pinia 状态管理
-- `<script setup lang="ts">`
-
-### 数据存储
-- SQLite + FTS5（结构化数据）
-- JSON 文件（项目存储，ProjectStore）
-
-### LLM 调用
-- DeepSeek V4 Pro（推理/复杂任务）
-- DeepSeek V4 Flash（正文/校审，默认）
-- MiMo V2.5 Pro（备选）
-- 通过 gateway.py 统一调用，角色自动路由
+## 3. 黄金路径（工作流）
+1.  **锁定上下文**：读取 `tasks/INDEX.md` 确定当前任务。
+2.  **同步进度**：更新 `docs/02_任务看板.md` 和 `docs/03_开发决策集.md`。
+3.  **读后写**：修改代码前必须先读取相关文件，确保理解当前代码逻辑。
+4.  **验证闭环**：每完成一个子任务，必须进行验证并同步状态。
 
 ---
 
-## 5.1 编码规范（强制）
+## 4. 编码硬性限制（强制执行）
 
-> 完整规范见 `docs/coding-standards.md`，以下为硬性约束。
+> 完整规范见 [docs/coding-standards.md](docs/coding-standards.md)。AI 会在每次对话中实时检查以下阈值。
 
-### 后端 Python 硬性限制
-
-| 指标 | 警告阈值 | 上限 | 超标处理 |
+### 4.1 后端 Python 约束
+| 指标 | 警告阈值 | 熔断上限 | 超标处理 |
 |------|---------|------|----------|
-| 文件行数 | 300 行 | 500 行 | 500+ 必须拆分 |
-| 函数行数 | 30 行 | 50 行 | 50+ 必须拆分 |
-| 参数个数 | 4 个 | 6 个 | 6+ 用 dataclass/Pydantic |
-| 嵌套层级 | 3 层 | 4 层 | 4+ 用早返回 |
-| 圈复杂度 | 8 | 12 | 12+ 重构 |
-| 导入数量 | 15 个 | 20 个 | 20+ 职责过多 |
+| **文件行数** | 300 行 | 500 行 | 500+ 必须拆分模块 |
+| **函数行数** | 30 行 | 50 行 | 50+ 必须提取子函数 |
+| **参数个数** | 4 个 | 6 个 | 6+ 强制使用 Pydantic/Dataclass |
+| **嵌套层级** | 3 层 | 4 层 | 4+ 强制使用 Guard Clause (早返回) |
+| **圈复杂度** | 8 | 12 | 12+ 必须重构逻辑 |
+| **强制要求** | - | - | 必须包含 **Type Hints** 和 Google Style Docstring |
 
-- 超过警告阈值：加 `# TODO: 指标超标，考虑优化`
-- 超过上限：必须重构，否则不合并
-
-### 前端 Vue/TypeScript 硬性限制
-
-| 指标 | 警告阈值 | 上限 | 超标处理 |
+### 4.2 前端 Vue/TypeScript 约束
+| 指标 | 警告阈值 | 熔断上限 | 超标处理 |
 |------|---------|------|----------|
-| `.vue` 文件总行数 | 200 行 | 350 行 | 350+ 必须拆组件 |
-| `<script>` 行数 | 150 行 | 250 行 | 250+ 提取 composable |
-| `<template>` 行数 | 80 行 | 150 行 | 150+ 提取子组件 |
-| `.ts` 文件行数 | 200 行 | 400 行 | 400+ 拆模块 |
-| 函数行数 | 25 行 | 40 行 | 40+ 必须拆分 |
-| 组件内变量/函数 | 10 个 | 15 个 | 15+ 组件过大 |
-| any 使用 | 0 个 | — | 用 unknown + 类型守卫 |
+| **.vue 总行数** | 200 行 | 350 行 | 350+ 必须拆分组件 |
+| **<script> 行数** | 150 行 | 250 行 | 250+ 提取至 Composable |
+| **组件内状态** | 10 个 | 15 个 | 15+ 说明组件职责过载 |
+| **any 使用** | 0 个 | 0 个 | 禁用 any，使用 unknown + 类型推断 |
+| **强制要求** | - | - | `<script setup lang="ts">` |
 
-### 命名规范速查
+---
 
-| 类型 | Python | Vue/TS |
-|------|--------|--------|
-| 文件 | snake_case.py | PascalCase.vue / camelCase.ts |
-| 类 | PascalCase | PascalCase（接口/类型） |
-| 函数 | snake_case | camelCase |
-| 常量 | UPPER_SNAKE_CASE | UPPER_SNAKE_CASE |
-| 布尔 | is_/has_/can_ | is/has/can |
-| composable | — | use 前缀 |
+## 5. 技术栈与角色快速查询
+- **后端**: Python 3.11+ / FastAPI / SQLAlchemy (SQLite)
+- **前端**: Vue 3 / Vite / Ant Design Vue 4.x / Pinia
+- **LLM 路由**:
+  - `pro` (DeepSeek-V4-Pro): 用于复杂逻辑分析、大纲编剧、世界观构建。
+  - `flash` (DeepSeek-V4-Flash): 用于正文生成、场景编剧、审校。
+- **存储方案**: JSON (项目配置) / SQLite + FTS5 (结构化及检索数据)。
 
-### 提交规范
-
-```
-<type>(<scope>): <description>
-
-type: feat / fix / refactor / style / docs / test / chore
-scope: web / api / engine / cli / docs
-```
-
-示例：
-- `feat(web): 新增引导式灵感创建流程`
-- `fix(api): 修复流水线状态丢失问题`
-- `refactor(engine): 拆分 writer.py 超长函数`
-
-## 6. 存储架构
-
-```
-NovelFactory/
-├── src/novel_factory/    # 后端生产代码
-│   ├── api/              # FastAPI 路由
-│   ├── db/               # 数据层
-│   ├── llm/              # LLM 调用层
-│   └── engine/           # 叙事引擎（8个AI角色）
-├── web/src/              # 前端代码
-├── tasks/                # 任务包
-├── docs/                 # 项目文档
-├── data/                 # SQLite + 项目数据（gitignore）
-└── output/               # 生成的小说输出（gitignore）
-```
-
-## 7. AI 编辑部（10个角色）
-
-| 角色 | 模型 | 职责 |
-|------|------|------|
-| 🎯 策划经理 | flash | 选题评估 |
-| 🌍 世界观架构师 | pro | 时空背景、核心规则 |
-| 👤 角色设计师 | flash | 角色卡、人物弧光 |
-| 📋 大纲编剧 | pro | 章节结构、伏笔 |
-| 🎬 场景编剧 | flash | 场景级细纲 |
-| ✍️ 正文作者 | flash | 正文生成 |
-| 🔍 编辑审校 | flash | 规则检查+质量评估 |
-| 📝 内容适配师 | flash | 多平台格式转换 |
-| 🎬 剧本改编编剧 | flash | 漫剧/短剧剧本 |
-| 🎥 漫剧制作人 | — | 分镜+绘图+配音+合成 |

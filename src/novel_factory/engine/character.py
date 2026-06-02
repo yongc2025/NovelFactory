@@ -6,11 +6,16 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from novel_factory.llm.gateway import complete
-from novel_factory.llm.prompts import CHARACTER_SYSTEM, CHARACTER_USER, render_prompt
+from novel_factory.llm.skill_loader import SkillLoader
 
 logger = logging.getLogger(__name__)
+
+# 初始化 SkillLoader
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+skill_loader = SkillLoader(str(SKILLS_DIR))
 
 
 async def design_characters(
@@ -20,52 +25,27 @@ async def design_characters(
 ) -> list[dict]:
     """
     设计角色
-
-    Args:
-        project_id: 项目 ID
-        world: 世界观设定列表
-        params: 项目创建参数，包含角色预设
     """
     params = params or {}
     logger.info("开始设计角色，项目: %s", project_id)
 
     world_summary = _format_world_summary(world)
 
-    # 构建角色约束
-    constraints = []
-    if params.get("protagonist_name"):
-        constraints.append(f"主角名：{params['protagonist_name']}")
-    if params.get("protagonist_desc"):
-        constraints.append(f"主角人设：{params['protagonist_desc']}")
-    if params.get("antagonist_name"):
-        constraints.append(f"反派名：{params['antagonist_name']}")
-    if params.get("antagonist_desc"):
-        constraints.append(f"反派人设：{params['antagonist_desc']}")
-    if params.get("has_romance") and params["has_romance"] != "flexible":
-        constraints.append(f"CP线：{'需要' if params['has_romance'] == 'yes' else '不需要'}")
-    if params.get("romance_desc"):
-        constraints.append(f"CP设定：{params['romance_desc']}")
-    if params.get("supporting_count"):
-        constraints.append(f"配角数量：{params['supporting_count']}个")
-    if params.get("target_audience") and params["target_audience"] != "general":
-        audience = "女频" if params["target_audience"] == "female" else "男频"
-        constraints.append(f"目标读者：{audience}")
-    if params.get("feedback"):
-        constraints.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整角色设定。")
+    # 准备 SkillLoader 渲染上下文
+    render_context = {
+        "topic": {
+            "title": project_id,
+            "genre": params.get("genre_major", ""),
+            "premise": params.get("premise", ""),
+        },
+        "world_summary": world_summary,
+        "params": params,
+    }
 
-    constraint_text = "\n".join(constraints) if constraints else "（无特殊约束）"
-
-    user_prompt = render_prompt(
-        CHARACTER_USER,
-        title=project_id,
-        genre=params.get("genre_major", ""),
-        premise=params.get("premise", ""),
-        world_summary=world_summary,
-    )
-    user_prompt += f"\n\n角色约束：\n{constraint_text}"
+    system_prompt, user_prompt = skill_loader.render("character", render_context)
 
     messages = [
-        {"role": "system", "content": CHARACTER_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
 
@@ -74,7 +54,12 @@ async def design_characters(
     return _parse_characters(response)
 
 
-def _parse_characters(response: str) -> list[dict]:
+    response = await complete(messages=messages, role="character", temperature=0.7, max_tokens=4096)
+
+    return _parse_characters(response, project_id)
+
+
+def _parse_characters(response: str, project_id: str = "") -> list[dict]:
     """解析角色 JSON"""
     try:
         json_str = response
@@ -86,20 +71,79 @@ def _parse_characters(response: str) -> list[dict]:
         characters = json.loads(json_str.strip())
 
         if isinstance(characters, dict):
+            # 兼容字典格式: {"protagonist": {...}, "antagonist": {...}, "supporting": [...]}
             result = []
-            for key in ["protagonist", "antagonist"]:
-                if key in characters:
-                    char = characters[key]
-                    if isinstance(char, dict):
-                        char["role"] = key
-                        result.append(char)
+            if "protagonist" in characters:
+                char = characters["protagonist"]
+                if isinstance(char, dict):
+                    char["role"] = "protagonist"
+                    result.append(char)
+            if "antagonist" in characters:
+                char = characters["antagonist"]
+                if isinstance(char, dict):
+                    char["role"] = "antagonist"
+                    result.append(char)
             if "supporting" in characters and isinstance(characters["supporting"], list):
-                result.extend(characters["supporting"])
+                for char in characters["supporting"]:
+                    if isinstance(char, dict):
+                        char["role"] = "supporting"
+                        result.append(char)
             if result:
                 characters = result
 
         if not isinstance(characters, list):
             raise ValueError(f"期望列表，得到 {type(characters)}")
+
+        # 统一和补全字段
+        for i, char in enumerate(characters):
+            # 基础字段
+            char.setdefault("id", f"char_{i+1}")
+            char.setdefault("project_id", project_id)
+            
+            # 角色映射与归一化
+            raw_role = str(char.get("role", "")).lower()
+            if not raw_role or any(x in raw_role for x in ["主角", "男一", "女一", "protagonist"]):
+                char["role"] = "protagonist"
+            elif any(x in raw_role for x in ["反派", "反一", "antagonist", "boss"]):
+                char["role"] = "antagonist"
+            else:
+                char["role"] = "supporting"
+            
+            # 即使归一化了角色，也可以把原始详细定位存在描述里
+            if "role_detail" not in char:
+                char["role_detail"] = char.get("role", "")
+
+            # 灵魂属性映射 (根据 web/src/types/index.ts 和 LLM 常见输出)
+            if "core_wound" in char and "wound" not in char:
+                char["wound"] = char.get("core_wound")
+            if "wound" not in char:
+                char["wound"] = char.get("core_wound", "")
+
+            if "desire" in char and "core_desire" not in char:
+                char["core_desire"] = char.pop("desire")
+            if "fear" in char and "core_fear" not in char:
+                char["core_fear"] = char.pop("fear")
+            
+            # 补齐 background (如果为空则用 personality 或 arc_description 填充)
+            if not char.get("background"):
+                char["background"] = char.get("personality", "")[:100] + "..." if len(char.get("personality", "")) > 100 else char.get("personality", "")
+
+            # 列表字段兜底
+            char.setdefault("traits", [])
+            char.setdefault("relationships", [])
+            
+            # 处理 relationship_with_protagonist 这种扁平字段
+            if "relationship_with_protagonist" in char and not char["relationships"]:
+                if char["role"] != "protagonist":
+                    # 尝试找到主角名字
+                    protagonist = next((c for c in characters if c.get("role") == "protagonist"), None)
+                    p_name = protagonist.get("name", "主角") if protagonist else "主角"
+                    char["relationships"].append({
+                        "target_id": "char_1",
+                        "target_name": p_name,
+                        "relation": "对手/伙伴",
+                        "description": char.pop("relationship_with_protagonist")
+                    })
 
         logger.info("角色设计完成，共 %d 个角色", len(characters))
         return characters

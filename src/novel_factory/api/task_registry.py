@@ -9,11 +9,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+
+from novel_factory.db.connection import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +71,28 @@ class PipelineTask:
 
 
 class TaskRegistry:
-    """任务注册表 — 单例使用"""
+    """任务注册表 — SQLite 持久化实现"""
 
     def __init__(self) -> None:
-        self._tasks: dict[str, PipelineTask] = {}
-        self._running: dict[str, str] = {}  # project_id → task_id
         self._lock = asyncio.Lock()
+
+    def _row_to_task(self, row: Any) -> PipelineTask:
+        """将 SQLite Row 转为 PipelineTask 对象"""
+        return PipelineTask(
+            id=row["id"],
+            project_id=row["project_id"],
+            stage=row["stage"],
+            status=row["status"],
+            cancel_requested=bool(row["cancel_requested"]),
+            progress_current=row["progress_current"] or 0,
+            progress_total=row["progress_total"] or 0,
+            progress_label=row["progress_label"] or "",
+            started_at=row["started_at"] or 0.0,
+            finished_at=row["finished_at"] or 0.0,
+            result=json.loads(row["result"]) if row["result"] else None,
+            error=row["error"],
+            params=json.loads(row["params"]) if row["params"] else {},
+        )
 
     async def submit(
         self,
@@ -81,46 +100,47 @@ class TaskRegistry:
         stage: str,
         params: dict | None = None,
     ) -> tuple[PipelineTask, bool]:
-        """提交任务。返回 (task, is_new)。
-
-        幂等：同 project+stage 在跑时返回已有任务 (is_new=False)。
-        互斥：同 project 只能有一个 running 任务。
-        """
+        """提交任务。返回 (task, is_new)。"""
         async with self._lock:
-            # 检查同 project 是否有任务在跑
-            existing_id = self._running.get(project_id)
-            if existing_id:
-                existing = self._tasks.get(existing_id)
-                if existing and existing.status in ("pending", "running"):
+            with get_connection() as conn:
+                # 检查同 project 是否有活跃任务
+                cursor = conn.execute(
+                    "SELECT * FROM tasks WHERE project_id = ? AND status IN ('pending', 'running')",
+                    (project_id,)
+                )
+                existing_row = cursor.fetchone()
+                
+                if existing_row:
+                    existing = self._row_to_task(existing_row)
                     if existing.stage == stage:
-                        # 幂等命中：同 stage 在跑
-                        logger.info(
-                            "幂等命中: project=%s stage=%s task=%s",
-                            project_id, stage, existing.id,
-                        )
+                        logger.info("幂等命中: project=%s stage=%s task=%s", project_id, stage, existing.id)
                         return existing, False
                     else:
-                        # 不同 stage 在跑，不能覆盖
                         raise RuntimeError(
                             f"项目 {project_id} 的 {existing.stage} 阶段正在执行中，"
                             f"请等待完成后再启动 {stage}"
                         )
-                # 旧任务已结束，清理
-                del self._running[project_id]
 
-            # 创建新任务
-            task = PipelineTask(
-                id=str(uuid.uuid4()),
-                project_id=project_id,
-                stage=stage,
-                status="pending",
-                started_at=time.time(),
-                params=params or {},
-            )
-            self._tasks[task.id] = task
-            self._running[project_id] = task.id
-            logger.info("任务创建: task=%s project=%s stage=%s", task.id, project_id, stage)
-            return task, True
+                # 创建新任务
+                task_id = str(uuid.uuid4())
+                now = time.time()
+                params_json = json.dumps(params or {}, ensure_ascii=False)
+                
+                conn.execute(
+                    "INSERT INTO tasks (id, project_id, stage, status, started_at, params) VALUES (?, ?, ?, ?, ?, ?)",
+                    (task_id, project_id, stage, "pending", now, params_json)
+                )
+                
+                new_task = PipelineTask(
+                    id=task_id,
+                    project_id=project_id,
+                    stage=stage,
+                    status="pending",
+                    started_at=now,
+                    params=params or {},
+                )
+                logger.info("任务创建(DB): task=%s project=%s stage=%s", task_id, project_id, stage)
+                return new_task, True
 
     async def transition(
         self,
@@ -128,33 +148,36 @@ class TaskRegistry:
         new_status: str,
         **kwargs: Any,
     ) -> None:
-        """状态转换 — 单点写入，原子性。"""
+        """状态转换 — 持久化到 DB"""
         async with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                raise KeyError(f"任务不存在: {task_id}")
+            with get_connection() as conn:
+                cursor = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+                row = cursor.fetchone()
+                if not row:
+                    raise KeyError(f"任务不存在: {task_id}")
+                
+                old_status = row["status"]
+                valid = _VALID_TRANSITIONS.get(old_status, set())
+                if new_status not in valid:
+                    raise ValueError(f"非法转换: {old_status} → {new_status} (task={task_id})")
 
-            valid = _VALID_TRANSITIONS.get(task.status, set())
-            if new_status not in valid:
-                raise ValueError(
-                    f"非法转换: {task.status} → {new_status} (task={task_id})"
-                )
+                update_fields = ["status = ?", "finished_at = ?"]
+                params = [new_status, None]
+                
+                if new_status in ("success", "failed", "cancelled"):
+                    params[1] = time.time()
+                
+                if "result" in kwargs:
+                    update_fields.append("result = ?")
+                    params.append(json.dumps(kwargs["result"], ensure_ascii=False))
+                if "error" in kwargs:
+                    update_fields.append("error = ?")
+                    params.append(kwargs["error"])
 
-            task.status = new_status
-            if "result" in kwargs:
-                task.result = kwargs["result"]
-            if "error" in kwargs:
-                task.error = kwargs["error"]
-
-            if new_status in ("success", "failed", "cancelled"):
-                task.finished_at = time.time()
-                # 释放互斥锁
-                if self._running.get(task.project_id) == task_id:
-                    del self._running[task.project_id]
-
-            logger.info(
-                "状态转换: task=%s %s → %s", task_id, task.status, new_status,
-            )
+                query = f"UPDATE tasks SET {', '.join(update_fields)} WHERE id = ?"
+                params.append(task_id)
+                conn.execute(query, tuple(params))
+                logger.info("状态转换(DB): task=%s %s → %s", task_id, old_status, new_status)
 
     async def update_progress(
         self,
@@ -165,38 +188,41 @@ class TaskRegistry:
     ) -> None:
         """更新批量任务进度。"""
         async with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                return
-            task.progress_current = current
-            task.progress_total = total
-            task.progress_label = label
+            with get_connection() as conn:
+                conn.execute(
+                    "UPDATE tasks SET progress_current = ?, progress_total = ?, progress_label = ? WHERE id = ?",
+                    (current, total, label, task_id)
+                )
 
     async def cancel(self, task_id: str) -> bool:
-        """标记取消意图。返回是否成功标记。"""
+        """标记取消意图。"""
         async with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                return False
-            if task.status not in ("pending", "running"):
-                return False
-            task.cancel_requested = True
-            logger.info("取消标记: task=%s", task_id)
-            return True
+            with get_connection() as conn:
+                cursor = conn.execute(
+                    "UPDATE tasks SET cancel_requested = 1 WHERE id = ? AND status IN ('pending', 'running')",
+                    (task_id,)
+                )
+                success = cursor.rowcount > 0
+                if success:
+                    logger.info("取消标记(DB): task=%s", task_id)
+                return success
 
     def get(self, task_id: str) -> PipelineTask | None:
         """获取任务。"""
-        return self._tasks.get(task_id)
+        with get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            row = cursor.fetchone()
+            return self._row_to_task(row) if row else None
 
     def get_active(self, project_id: str) -> PipelineTask | None:
         """获取项目的当前活跃任务。"""
-        task_id = self._running.get(project_id)
-        if not task_id:
-            return None
-        task = self._tasks.get(task_id)
-        if task and task.status in ("pending", "running"):
-            return task
-        return None
+        with get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM tasks WHERE project_id = ? AND status IN ('pending', 'running')",
+                (project_id,)
+            )
+            row = cursor.fetchone()
+            return self._row_to_task(row) if row else None
 
     def is_running(self, project_id: str) -> bool:
         """检查项目是否有任务在跑。"""

@@ -79,12 +79,16 @@ class Character(BaseModel):
     personality_deep: Optional[str] = None
     core_desire: Optional[str] = None
     core_fear: Optional[str] = None
-    voice_style: Optional[str] = None
+    fatal_flaw: Optional[str] = None  # 致命弱点
+    wound: Optional[str] = None       # 原始伤口
+    speaking_style: Optional[str] = None # 说话风格
     secret: Optional[str] = None
     arc_start: Optional[str] = None
     arc_end: Optional[str] = None
+    arc_description: Optional[str] = None # 弧光总述
     current_state: Optional[str] = None
     relation_summary: Optional[str] = None
+    traits: Optional[str] = None      # JSON: ["标签1", "标签2"]
     sort_order: Optional[int] = None
     created_at: Optional[datetime] = None
 
@@ -98,6 +102,16 @@ class CharacterCreate(BaseModel):
     appearance: Optional[str] = None
     personality_surface: Optional[str] = None
     personality_deep: Optional[str] = None
+    core_desire: Optional[str] = None
+    core_fear: Optional[str] = None
+    fatal_flaw: Optional[str] = None
+    wound: Optional[str] = None
+    speaking_style: Optional[str] = None
+    secret: Optional[str] = None
+    arc_start: Optional[str] = None
+    arc_end: Optional[str] = None
+    arc_description: Optional[str] = None
+    traits: Optional[str] = None
     core_desire: Optional[str] = None
     core_fear: Optional[str] = None
     voice_style: Optional[str] = None
@@ -269,3 +283,44 @@ class PublicationCreate(BaseModel):
     platform: str
     content_type: str
     title: Optional[str] = None
+
+
+# ── Tasks & Pipeline States ───────────────────────────────────
+
+class Task(BaseModel):
+    """流水线后台任务"""
+    id: str
+    project_id: str
+    stage: str
+    status: str
+    cancel_requested: bool = False
+    progress_current: int = 0
+    progress_total: int = 0
+    progress_label: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    result: Optional[str] = None  # JSON
+    error: Optional[str] = None
+    params: Optional[str] = None  # JSON
+
+
+class PipelineState(BaseModel):
+    """流水线全局状态"""
+    project_id: str
+    current_stage: Optional[str] = None
+    current_stage_label: Optional[str] = None
+    progress_percent: float = 0.0
+    total_stages: int = 0
+    completed_stages: int = 0
+    needs_confirmation: bool = False
+    status: str = "idle"
+    error: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class StageState(BaseModel):
+    """具体阶段状态"""
+    project_id: str
+    stage: str
+    status: str
+    updated_at: Optional[datetime] = None

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed } from "vue";
 import {
   Card,
   Tag,
@@ -11,7 +11,7 @@ import {
   InputNumber,
   Popconfirm,
   message,
-} from 'ant-design-vue'
+} from "ant-design-vue";
 import {
   EditOutlined,
   SaveOutlined,
@@ -22,137 +22,139 @@ import {
   DeleteOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
-} from '@ant-design/icons-vue'
-import type { Outline, OutlineChapter } from '@/types'
+} from "@ant-design/icons-vue";
+import type { Outline, OutlineChapter } from "@/types";
 
 const props = defineProps<{
-  outline: Outline | null
-  loading?: boolean
-  projectId: string
-  showConfirm?: boolean
-  hideActions?: boolean
-}>()
+  outline: Outline | null;
+  loading?: boolean;
+  projectId: string;
+  showConfirm?: boolean;
+  hideActions?: boolean;
+}>();
 
 const emit = defineEmits<{
-  update: [data: Outline]
-  confirm: []
-}>()
+  update: [data: Outline];
+  confirm: [];
+}>();
 
-const editing = ref(false)
-const editData = ref<Outline | null>(null)
+const editing = ref(false);
+const editData = ref<Outline | null>(null);
 
 // 单章编辑（查看模式下）
-const editingIndex = ref<number | null>(null)
-const editForm = ref<OutlineChapter | null>(null)
+const editingIndex = ref<number | null>(null);
+const editForm = ref<OutlineChapter | null>(null);
 
 function startEdit() {
-  editData.value = JSON.parse(JSON.stringify(props.outline))
-  editing.value = true
-  editingIndex.value = null
-  editForm.value = null
+  editData.value = JSON.parse(JSON.stringify(props.outline));
+  editing.value = true;
+  editingIndex.value = null;
+  editForm.value = null;
 }
 
 function cancelEdit() {
-  editing.value = false
-  editData.value = null
+  editing.value = false;
+  editData.value = null;
 }
 
 async function saveEdit() {
-  if (!editData.value) return
+  if (!editData.value) return;
   try {
-    const { updateOutline } = await import('@/api')
+    const { updateOutline } = await import("@/api");
     // 重新编号
     editData.value.chapters.forEach((ch, i) => {
-      ch.chapter_number = i + 1
-    })
+      ch.chapter_number = i + 1;
+    });
     // total_chapters 保持不变（生成目标），不随编辑覆盖
-    await updateOutline(props.projectId, editData.value)
-    emit('update', editData.value)
-    editing.value = false
-    editData.value = null
-    message.success('大纲已保存')
+    await updateOutline(props.projectId, editData.value);
+    emit("update", editData.value);
+    editing.value = false;
+    editData.value = null;
+    message.success("大纲已保存");
   } catch {
-    message.error('保存失败')
+    message.error("保存失败");
   }
 }
 
 // 查看模式下编辑单章
 function startEditChapter(index: number, chapter: OutlineChapter) {
-  editingIndex.value = index
-  editForm.value = JSON.parse(JSON.stringify(chapter))
+  editingIndex.value = index;
+  editForm.value = JSON.parse(JSON.stringify(chapter));
 }
 
 function cancelEditChapter() {
-  editingIndex.value = null
-  editForm.value = null
+  editingIndex.value = null;
+  editForm.value = null;
 }
 
 async function saveEditChapter() {
-  if (!editForm.value || editingIndex.value === null || !props.outline) return
+  if (!editForm.value || editingIndex.value === null || !props.outline) return;
   try {
-    const updated = JSON.parse(JSON.stringify(props.outline))
-    updated.chapters[editingIndex.value] = editForm.value
-    const { updateOutline } = await import('@/api')
-    await updateOutline(props.projectId, updated)
-    emit('update', updated)
-    editingIndex.value = null
-    editForm.value = null
-    message.success('章节已保存')
+    const updated = JSON.parse(JSON.stringify(props.outline));
+    updated.chapters[editingIndex.value] = editForm.value;
+    const { updateOutline } = await import("@/api");
+    await updateOutline(props.projectId, updated);
+    emit("update", updated);
+    editingIndex.value = null;
+    editForm.value = null;
+    message.success("章节已保存");
   } catch {
-    message.error('保存失败')
+    message.error("保存失败");
   }
 }
 
 // 编辑模式：章节操作
 function moveChapter(index: number, direction: -1 | 1) {
-  if (!editData.value) return
-  const chapters = editData.value.chapters
-  const newIndex = index + direction
-  if (newIndex < 0 || newIndex >= chapters.length) return
-  const temp = chapters[index]
-  chapters[index] = chapters[newIndex]
-  chapters[newIndex] = temp
+  if (!editData.value) return;
+  const chapters = editData.value.chapters;
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= chapters.length) return;
+  const temp = chapters[index];
+  chapters[index] = chapters[newIndex];
+  chapters[newIndex] = temp;
 }
 
 function addChapter() {
-  if (!editData.value) return
-  const nextNum = editData.value.chapters.length + 1
+  if (!editData.value) return;
+  const nextNum = editData.value.chapters.length + 1;
   editData.value.chapters.push({
     chapter_number: nextNum,
     title: `第${nextNum}章`,
-    core_event: '',
+    core_event: "",
     characters_present: [],
-    emotion_position: '',
-    hook: '',
+    emotion_position: "",
+    hook: "",
     foreshadow_ops: [],
-  })
+  });
 }
 
 function deleteChapter(index: number) {
-  if (!editData.value) return
-  editData.value.chapters.splice(index, 1)
+  if (!editData.value) return;
+  editData.value.chapters.splice(index, 1);
 }
 
 function addForeshadow(chapterIndex: number) {
-  if (!editData.value) return
-  editData.value.chapters[chapterIndex].foreshadow_ops.push('')
+  if (!editData.value) return;
+  editData.value.chapters[chapterIndex].foreshadow_ops.push("");
 }
 
 function removeForeshadow(chapterIndex: number, eventIndex: number) {
-  if (!editData.value) return
-  editData.value.chapters[chapterIndex].foreshadow_ops.splice(eventIndex, 1)
+  if (!editData.value) return;
+  editData.value.chapters[chapterIndex].foreshadow_ops.splice(eventIndex, 1);
 }
 
 const collapseItems = computed(() => {
-  if (!props.outline) return []
+  if (!props.outline) return [];
   return props.outline.chapters.map((ch, i) => ({
     key: String(i),
-    label: ch.title?.startsWith('第') ? ch.title : `第${ch.chapter_number}章 ${ch.title}`,
+    label: ch.title?.startsWith("第")
+      ? ch.title
+      : `第${ch.chapter_number}章 ${ch.title}`,
     children: ch,
-  }))
-})
+  }));
+});
 
-defineExpose({ startEdit, cancelEdit, editing })
+defineExpose({ startEdit, cancelEdit, editing });
 </script>
 
 <template>
@@ -171,11 +173,18 @@ defineExpose({ startEdit, cancelEdit, editing })
         <Space v-if="!hideActions">
           <template v-if="!editing">
             <Button @click="startEdit"><EditOutlined /> 编辑全部</Button>
-            <Button v-if="showConfirm !== false" type="primary" @click="emit('confirm')">✅ 采用</Button>
+            <Button
+              v-if="showConfirm !== false"
+              type="primary"
+              @click="emit('confirm')"
+              >✅ 采用</Button
+            >
           </template>
           <template v-else>
             <Button @click="cancelEdit"><CloseOutlined /> 取消</Button>
-            <Button type="primary" @click="saveEdit"><SaveOutlined /> 保存全部</Button>
+            <Button type="primary" @click="saveEdit"
+              ><SaveOutlined /> 保存全部</Button
+            >
           </template>
         </Space>
       </div>
@@ -186,7 +195,11 @@ defineExpose({ startEdit, cancelEdit, editing })
           <Collapse.Panel
             v-for="(ch, index) in outline.chapters"
             :key="index"
-            :header="ch.title?.startsWith('第') ? ch.title : `第${ch.chapter_number}章 ${ch.title}`"
+            :header="
+              ch.title?.startsWith('第')
+                ? ch.title
+                : `第${ch.chapter_number}章 ${ch.title}`
+            "
           >
             <template v-if="editingIndex === index && editForm">
               <div class="edit-form">
@@ -196,19 +209,34 @@ defineExpose({ startEdit, cancelEdit, editing })
                 </div>
                 <div class="form-item">
                   <label>核心事件</label>
-                  <Input.TextArea v-model:value="editForm.core_event" :rows="3" />
+                  <Input.TextArea
+                    v-model:value="editForm.core_event"
+                    :rows="3"
+                  />
                 </div>
                 <div class="form-item">
                   <label>出场角色（逗号分隔）</label>
                   <Input
-                    :value="Array.isArray(editForm.characters_present) ? editForm.characters_present.join('、') : ''"
-                    @update:value="(v: string) => editForm!.characters_present = v.split(/[、,，]/).filter(Boolean)"
+                    :value="
+                      Array.isArray(editForm.characters_present)
+                        ? editForm.characters_present.join('、')
+                        : ''
+                    "
+                    @update:value="
+                      (v: string) =>
+                        (editForm!.characters_present = v
+                          .split(/[、,，]/)
+                          .filter(Boolean))
+                    "
                     placeholder="角色1、角色2"
                   />
                 </div>
                 <div class="form-item">
                   <label>情绪定位</label>
-                  <Input v-model:value="editForm.emotion_position" placeholder="如：压抑-释然" />
+                  <Input
+                    v-model:value="editForm.emotion_position"
+                    placeholder="如：压抑-释然"
+                  />
                 </div>
                 <div class="form-item">
                   <label>钩子</label>
@@ -217,8 +245,21 @@ defineExpose({ startEdit, cancelEdit, editing })
                 <div class="form-item">
                   <label>伏笔操作（每行一个）</label>
                   <Input.TextArea
-                    :value="(editForm.foreshadow_ops || []).join('\\n')"
-                    @update:value="(v: string) => editForm!.foreshadow_ops = v.split('\\n').filter(Boolean)"
+                    :value="
+                      (editForm.foreshadow_ops || [])
+                        .map((op) =>
+                          typeof op === 'string'
+                            ? op
+                            : `${op.action === 'plant' ? '埋设' : '回收'}：${op.content}${op.id ? ' [ID:' + op.id + ']' : ''}`,
+                        )
+                        .join('\n')
+                    "
+                    @update:value="
+                      (v: string) =>
+                        (editForm!.foreshadow_ops = v
+                          .split('\\n')
+                          .filter(Boolean))
+                    "
                     :rows="3"
                     placeholder="每行一个伏笔"
                   />
@@ -233,20 +274,51 @@ defineExpose({ startEdit, cancelEdit, editing })
             </template>
             <template v-else>
               <div class="chapter-info">
-                <p class="chapter-summary">{{ ch.core_event || ch.summary || '-' }}</p>
+                <p class="chapter-summary">
+                  {{ ch.core_event || ch.summary || "-" }}
+                </p>
                 <div class="chapter-meta">
-                  <template v-if="ch.characters_present && ch.characters_present.length">
-                    <Tag v-for="c in ch.characters_present" :key="c" color="blue">
+                  <template
+                    v-if="ch.characters_present && ch.characters_present.length"
+                  >
+                    <Tag
+                      v-for="c in ch.characters_present"
+                      :key="c"
+                      color="blue"
+                    >
                       <UserOutlined /> {{ c }}
                     </Tag>
                   </template>
-                  <Tag v-if="ch.emotion_position" color="purple">{{ ch.emotion_position }}</Tag>
+                  <Tag v-if="ch.emotion_position" color="purple">{{
+                    ch.emotion_position
+                  }}</Tag>
                 </div>
                 <p v-if="ch.hook" class="chapter-hook">🪝 {{ ch.hook }}</p>
-                <div class="chapter-events" v-if="ch.foreshadow_ops && ch.foreshadow_ops.length">
+                <div
+                  class="chapter-events"
+                  v-if="ch.foreshadow_ops && ch.foreshadow_ops.length"
+                >
                   <div class="events-label">伏笔操作：</div>
                   <ul>
-                    <li v-for="(item, i) in ch.foreshadow_ops" :key="i">{{ item }}</li>
+                    <li v-for="(item, i) in ch.foreshadow_ops" :key="i">
+                      <template v-if="typeof item === 'string'">{{
+                        item
+                      }}</template>
+                      <template v-else>
+                        <Tag
+                          :color="item.action === 'plant' ? 'orange' : 'cyan'"
+                          size="small"
+                        >
+                          {{ item.action === "plant" ? "埋设" : "回收" }}
+                        </Tag>
+                        <span
+                          v-if="item.id"
+                          style="color: #8c8c8c; margin-right: 4px"
+                          >[ID:{{ item.id }}]</span
+                        >
+                        {{ item.content }}
+                      </template>
+                    </li>
                   </ul>
                 </div>
                 <Button
@@ -313,14 +385,26 @@ defineExpose({ startEdit, cancelEdit, editing })
                   <div class="form-item" style="flex: 1">
                     <label>出场角色（逗号分隔）</label>
                     <Input
-                      :value="Array.isArray(ch.characters_present) ? ch.characters_present.join('、') : ''"
-                      @update:value="(v: string) => ch.characters_present = v.split(/[、,，]/).filter(Boolean)"
+                      :value="
+                        Array.isArray(ch.characters_present)
+                          ? ch.characters_present.join('、')
+                          : ''
+                      "
+                      @update:value="
+                        (v: string) =>
+                          (ch.characters_present = v
+                            .split(/[、,，]/)
+                            .filter(Boolean))
+                      "
                       placeholder="角色1、角色2"
                     />
                   </div>
                   <div class="form-item" style="width: 200px">
                     <label>情绪定位</label>
-                    <Input v-model:value="ch.emotion_position" placeholder="如：压抑-释然" />
+                    <Input
+                      v-model:value="ch.emotion_position"
+                      placeholder="如：压抑-释然"
+                    />
                   </div>
                 </div>
                 <div class="form-item">
@@ -334,8 +418,28 @@ defineExpose({ startEdit, cancelEdit, editing })
                     :key="ei"
                     class="list-edit-item"
                   >
-                    <Input v-model:value="ch.foreshadow_ops[ei]" placeholder="伏笔描述" />
-                    <Button type="text" danger @click="removeForeshadow(index, ei)">
+                    <Input
+                      :value="
+                        typeof ch.foreshadow_ops[ei] === 'string'
+                          ? ch.foreshadow_ops[ei]
+                          : (ch.foreshadow_ops[ei] as any).content
+                      "
+                      @update:value="
+                        (v: string) => {
+                          if (typeof ch.foreshadow_ops[ei] === 'string') {
+                            ch.foreshadow_ops[ei] = v;
+                          } else {
+                            (ch.foreshadow_ops[ei] as any).content = v;
+                          }
+                        }
+                      "
+                      placeholder="伏笔描述"
+                    />
+                    <Button
+                      type="text"
+                      danger
+                      @click="removeForeshadow(index, ei)"
+                    >
                       <DeleteOutlined />
                     </Button>
                   </div>
@@ -352,7 +456,12 @@ defineExpose({ startEdit, cancelEdit, editing })
             </Card>
           </div>
 
-          <Button type="dashed" block @click="addChapter" style="margin-top: 16px">
+          <Button
+            type="dashed"
+            block
+            @click="addChapter"
+            style="margin-top: 16px"
+          >
             <PlusOutlined /> 添加新章节
           </Button>
         </div>

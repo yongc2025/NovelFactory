@@ -1,34 +1,40 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { STEP_HINTS, PROTAGONIST_TEMPLATES, HEROINE_TEMPLATES } from './presets'
+import { computed } from "vue";
+import { Textarea } from "ant-design-vue";
+import {
+  STEP_HINTS,
+  PROTAGONIST_TEMPLATES,
+  HEROINE_TEMPLATES,
+} from "./presets";
 
 const props = defineProps<{
-  gender: 'male' | 'female' | 'both'
-  selectedProtagonist: string | null
-  selectedHeroine: string | null
-  romanceMode: string | null
-  freeText: string
-}>()
+  gender: "male" | "female" | "both";
+  selectedProtagonist: string | null;
+  selectedHeroine: string | null;
+  romanceMode: string | null;
+  freeText: string;
+}>();
 
 const emit = defineEmits<{
-  'select:protagonist': [id: string]
-  'select:heroine': [id: string]
-  'update:freeText': [value: string]
-}>()
+  "select:protagonist": [id: string];
+  "select:heroine": [id: string];
+  "update:freeText": [value: string];
+}>();
 
-const hint = STEP_HINTS.character
+const hint = STEP_HINTS.character;
 
 // 根据性别过滤主角模板
 const protagonistOptions = computed(() =>
-  PROTAGONIST_TEMPLATES.filter(t => t.gender === props.gender)
-)
+  PROTAGONIST_TEMPLATES.filter((t) => t.gender === props.gender),
+);
 
 // 是否显示女主选择（男频 + 选择了有女主的感情线）
-const showHeroine = computed(() =>
-  props.gender === 'male' &&
-  props.romanceMode &&
-  props.romanceMode !== 'none'
-)
+const showHeroine = computed(
+  () =>
+    props.gender === "male" &&
+    props.romanceMode &&
+    props.romanceMode !== "none",
+);
 </script>
 
 <template>
@@ -76,7 +82,7 @@ const showHeroine = computed(() =>
     <!-- 自由输入补充 -->
     <div class="step-character__free">
       <div class="section-label">✏️ 补充说明（可选）</div>
-      <a-text-area
+      <Textarea
         :value="freeText"
         @update:value="emit('update:freeText', $event)"
         :rows="3"

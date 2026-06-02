@@ -6,11 +6,16 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from novel_factory.llm.gateway import complete
-from novel_factory.llm.prompts import WORLDBUILDER_SYSTEM, WORLDBUILDER_USER, render_prompt
+from novel_factory.llm.skill_loader import SkillLoader
 
 logger = logging.getLogger(__name__)
+
+# 初始化 SkillLoader
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+skill_loader = SkillLoader(str(SKILLS_DIR))
 
 
 async def build_world(
@@ -20,47 +25,29 @@ async def build_world(
 ) -> dict:
     """
     构建世界观设定
-
-    Args:
-        project_id: 项目 ID
-        proposal: 选题方案
-        params: 项目创建参数，包含 world_setting/world_custom/forbidden_elements 等
     """
     params = params or {}
     logger.info("开始构建世界观，项目: %s", project_id)
 
-    # 构建约束信息
-    constraints = []
-    if params.get("world_setting"):
-        constraints.append(f"时空背景要求：{params['world_setting']}")
-    if params.get("world_custom"):
-        constraints.append(f"自定义世界观：{params['world_custom']}")
-    if params.get("forbidden_elements"):
-        constraints.append(f"禁忌元素（绝对不能出现）：{', '.join(params['forbidden_elements'])}")
-    if params.get("reference_works"):
-        constraints.append(f"参考作品风格：{params['reference_works']}")
-    if params.get("target_audience") and params["target_audience"] != "general":
-        audience = "女频读者" if params["target_audience"] == "female" else "男频读者"
-        constraints.append(f"目标读者：{audience}")
-    if params.get("feedback"):
-        constraints.append(f"\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整世界观设定。")
+    # 准备 SkillLoader 渲染上下文
+    render_context = {
+        "topic": proposal.get("title", "未命名"),
+        "genre": proposal.get("genre", params.get("genre_major", "")),
+        "theme": proposal.get("theme", ""),
+        "params": params,
+    }
 
-    constraint_text = "\n".join(constraints) if constraints else "（无特殊约束）"
-
-    user_prompt = render_prompt(
-        WORLDBUILDER_USER,
-        title=proposal.get("title", "未命名"),
-        genre=proposal.get("genre", params.get("genre_major", "")),
-        premise=proposal.get("logline", proposal.get("premise", "")),
-        target_readers=proposal.get("target_audience", proposal.get("target_readers", params.get("target_audience", "通用读者"))),
-        platforms=proposal.get("platforms", ", ".join(params.get("platforms", ["番茄小说"]))),
-    )
-    user_prompt += f"\n\n创作约束：\n{constraint_text}"
+    system_prompt, user_prompt = skill_loader.render("worldbuilder", render_context)
 
     messages = [
-        {"role": "system", "content": WORLDBUILDER_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+
+    response = await complete(messages=messages, role="worldbuilder", temperature=0.7, max_tokens=4096)
+
+    return _parse_world(response)
+
 
     response = await complete(messages=messages, role="worldbuilder", temperature=0.7, max_tokens=4096)
 
@@ -103,14 +90,55 @@ def _parse_world(response: str) -> dict:
 
 def _normalize_world_object(world_data: dict) -> dict:
     """将世界观对象补齐为前端展示所需字段。"""
+    # 增加对 SKILL.md 中 System Prompt 指定字段的映射
+    era = (
+        world_data.get("era")
+        or world_data.get("时代背景")
+        or world_data.get("background")  # 映射 background
+        or ""
+    )
+    geography = (
+        world_data.get("geography")
+        or world_data.get("地理环境")
+        or world_data.get("势力分布")
+        or world_data.get("background")  # 如果没有 era，把 background 也放这
+        or ""
+    )
+    # 如果 era 和 geography 拿到了同样的内容（来自 background），则清理其中一个以避免重复显示
+    if era == geography and len(era) > 0:
+        era = "核心背景" 
+
+    rules = _as_text_list(
+        world_data.get("rules")
+        or world_data.get("世界规则")
+        or world_data.get("pressure_points")  # 映射压力点
+    )
+    constraints = _as_text_list(
+        world_data.get("constraints")
+        or world_data.get("约束条件")
+        or world_data.get("unique_hooks")  # 映射独特卖点
+    )
+
     return {
-        "era": str(world_data.get("era") or world_data.get("时代背景") or ""),
-        "geography": str(world_data.get("geography") or world_data.get("地理环境") or world_data.get("势力分布") or ""),
-        "power_system": str(world_data.get("power_system") or world_data.get("核心规则") or world_data.get("力量体系") or ""),
-        "social_structure": str(world_data.get("social_structure") or world_data.get("社会结构") or world_data.get("社会体系") or ""),
-        "key_locations": _as_text_list(world_data.get("key_locations") or world_data.get("关键地点")),
-        "rules": _as_text_list(world_data.get("rules") or world_data.get("世界规则")),
-        "constraints": _as_text_list(world_data.get("constraints") or world_data.get("约束条件")),
+        "era": str(era),
+        "geography": str(geography),
+        "power_system": str(
+            world_data.get("power_system")
+            or world_data.get("核心规则")
+            or world_data.get("力量体系")
+            or ""
+        ),
+        "social_structure": str(
+            world_data.get("social_structure")
+            or world_data.get("社会结构")
+            or world_data.get("社会体系")
+            or ""
+        ),
+        "key_locations": _as_text_list(
+            world_data.get("key_locations") or world_data.get("关键地点")
+        ),
+        "rules": rules,
+        "constraints": constraints,
     }
 
 
@@ -156,7 +184,19 @@ def _normalize_world_list(world_list: list[dict]) -> dict:
 def _as_text_list(value: object) -> list[str]:
     """将模型返回的列表/字符串规范为字符串列表。"""
     if isinstance(value, list):
-        return [str(item) for item in value if str(item).strip()]
+        res = []
+        for item in value:
+            if isinstance(item, dict):
+                # 尝试提取名称和描述
+                name = item.get("name") or item.get("title") or ""
+                desc = item.get("description") or item.get("content") or ""
+                if name and desc:
+                    res.append(f"{name}: {desc}")
+                elif name or desc:
+                    res.append(str(name or desc))
+            elif str(item).strip():
+                res.append(str(item))
+        return res
     if isinstance(value, str) and value.strip():
         return [value]
     return []

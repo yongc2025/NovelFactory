@@ -12,37 +12,16 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from novel_factory.llm.gateway import complete
-from novel_factory.llm.prompts import METADATA_SYSTEM, METADATA_USER, render_prompt
+from novel_factory.llm.skill_loader import SkillLoader
 
 logger = logging.getLogger(__name__)
 
-# 番茄小说分类体系（用于分类匹配参考）
-CATEGORY_TREE = {
-    "男频": {
-        "玄幻": ["东方玄幻", "异世大陆", "高武世界", "远古神话", "王朝争霸", "升级练功"],
-        "仙侠": ["修真文明", "幻想修仙", "神话修真", "洪荒封神"],
-        "都市": ["都市生活", "都市异能", "都市修真", "商战职场", "娱乐明星", "青春校园"],
-        "历史": ["架空历史", "历史传记", "秦汉三国", "上古先秦", "两晋隋唐", "五代十国", "两宋元明"],
-        "军事": ["军事战争", "战争幻想", "抗战烽火", "谍战特工"],
-        "游戏": ["游戏生涯", "虚拟网游", "电子竞技", "游戏异界"],
-        "体育": ["篮球运动", "体育赛事", "足球运动", "竞技乒乓"],
-        "科幻": ["超级科技", "时空穿梭", "未来世界", "古武机甲", "星际文明"],
-        "灵异": ["灵异奇谈", "恐怖惊悚", "悬疑探险", "风水秘术"],
-        "奇幻": ["剑与魔法", "史诗奇幻", "黑暗幻想", "现代魔法"],
-    },
-    "女频": {
-        "古代言情": ["宫斗宅斗", "穿越奇情", "古代情缘", "女尊王朝", "经商种田"],
-        "现代言情": ["豪门总裁", "都市情缘", "婚恋情缘", "职场丽人", "娱乐明星"],
-        "浪漫青春": ["青春校园", "青梅竹马", "纯爱初恋", "叛逆成长"],
-        "仙侠奇缘": ["仙侣奇缘", "武侠情缘", "古典仙侠", "幻想异界"],
-        "悬疑灵异": ["灵异奇谈", "推理悬疑", "探险生存", "恐怖惊悚"],
-        "玄幻言情": ["异世大陆", "远古神话", "高武世界", "玄幻仙侠"],
-        "科幻空间": ["时空穿梭", "未来世界", "星际恋歌", "超级科技"],
-        "游戏竞技": ["网游情缘", "电子竞技", "游戏异界"],
-    },
-}
+# 初始化 SkillLoader
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+skill_loader = SkillLoader(str(SKILLS_DIR))
 
 
 async def generate_metadata(
@@ -54,49 +33,41 @@ async def generate_metadata(
 ) -> dict:
     """
     生成书籍元数据
-
-    Args:
-        project_id: 项目 ID
-        topic: 选题方案
-        outline: 章节大纲
-        characters: 角色列表或字典
-        params: 项目参数（来自 ProjectCreate）
-
-    Returns:
-        书籍元数据字典，包含 title, title_candidates, synopsis_short/medium/long,
-        tags, category, category_path
     """
     logger.info("开始生成书籍元数据，项目: %s", project_id)
 
-    # 提取上下文信息
-    topic_text = json.dumps(topic, ensure_ascii=False, indent=2) if topic else "{}"
+    # 提取上下文
     outline_summary = _summarize_outline(outline)
     protagonist = _extract_protagonist(characters)
     genre = _build_genre_text(params)
     platforms = ", ".join(params.get("platforms", ["fanqie"]))
-    target_audience = _audience_label(params.get("target_audience", "male"))
 
-    # 用户偏好（来自 ProjectCreate 的 book_* 字段）
-    user_title = params.get("book_title") or "无"
-    user_synopsis = params.get("book_synopsis") or "无"
-    user_tags = ", ".join(params.get("book_tags", [])) if params.get("book_tags") else "无"
-    user_category = params.get("book_category") or "无"
+    # 准备 SkillLoader 渲染上下文
+    render_context = {
+        "topic": topic,
+        "outline_summary": outline_summary,
+        "protagonist": protagonist,
+        "genre": genre,
+        "platforms": platforms,
+        "user_preferences": {
+            "title": params.get("book_title"),
+            "synopsis": params.get("book_synopsis"),
+            "tags": params.get("book_tags"),
+            "category": params.get("book_category"),
+        }
+    }
 
-    user_prompt = render_prompt(
-        METADATA_USER,
-        topic=topic_text,
-        outline_summary=outline_summary,
-        protagonist=protagonist,
-        genre=genre,
-        platforms=platforms,
-        target_audience=target_audience,
-        user_title=user_title,
-        user_synopsis=user_synopsis,
-        user_tags=user_tags,
-        user_category=user_category,
-    )
-    if params.get("feedback"):
-        user_prompt += f"\n\n【用户反馈意见】：{params['feedback']}\n请根据以上反馈意见调整书籍元数据。"
+    system_prompt, user_prompt = skill_loader.render("metadata", render_context)
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    response = await complete(messages=messages, role="metadata", temperature=0.7, max_tokens=4096)
+
+    return _parse_metadata(response)
+
 
     messages = [
         {"role": "system", "content": METADATA_SYSTEM},

@@ -17,9 +17,14 @@
 
 import json
 import uuid
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from novel_factory.db.connection import get_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _get_data_dir() -> Path:
@@ -109,6 +114,13 @@ class ProjectStore:
             "created_at": meta["created_at"],
         }
         self._save_index(index)
+
+        # 同时插入到 SQLite 的 projects 表（用于 FK 完整性）
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO projects (id, title) VALUES (?, ?)",
+                (project_id, title)
+            )
 
         return project_id
 
