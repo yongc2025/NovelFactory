@@ -197,6 +197,12 @@
       "action": "他做了什么",
       "change": "局面有什么变化",
       "hook": "章末钩子",
+      "characters_present": ["出场角色名1", "出场角色名2"],
+      "emotion_position": "本章情绪基调 (如：压抑/反转/爽快)",
+      "plot_lines_progress": {
+        "主线：记忆真相": "推进 10%",
+        "支线：师徒恩怨": "初次揭露"
+      },
       "psychological_arc": "心理弧线（从→到）",
       "growth_dimension": "本章推进哪一维成长（能力/认知/关系/信念/身份）",
       "conflict_level": "本章主要冲突层级（L1人与环境/L2人与人/L3人与制度/L4人与历史/L5人与自我）",

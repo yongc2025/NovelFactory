@@ -83,6 +83,13 @@ def _parse_outline(response: str, target_chapters: int) -> dict:
             # 0021: 接口对齐 - 角色与描述
             if "characters_present" not in ch and "characters_involved" in ch:
                 ch["characters_present"] = ch.pop("characters_involved")
+            if "characters_present" not in ch and "characters" in ch:
+                ch["characters_present"] = ch.pop("characters")
+            
+            # 0024: 情绪字段映射
+            if "emotion_position" not in ch and "emotion_for_reader" in ch:
+                ch["emotion_position"] = ch.get("emotion_for_reader")
+
             if "core_event" not in ch and "summary" in ch:
                 ch["core_event"] = ch.get("summary")
             

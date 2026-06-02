@@ -194,7 +194,13 @@ const outlinePagedChapters = computed(() => {
 });
 const outlineColumns = [
   { title: "序号", key: "index", width: 60 },
-  { title: "章节标题", dataIndex: "title", key: "title", ellipsis: true },
+  {
+    title: "章节标题",
+    dataIndex: "title",
+    key: "title",
+    width: 220,
+    ellipsis: true,
+  },
   {
     title: "核心事件",
     dataIndex: "core_event",
@@ -205,7 +211,7 @@ const outlineColumns = [
     title: "出场角色",
     dataIndex: "characters_present",
     key: "characters_present",
-    width: 120,
+    width: 180,
   },
   { title: "操作", key: "action", width: 140 },
 ];
@@ -1147,7 +1153,32 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null);
               v-for="(item, i) in outlineDrawerChapter.foreshadow_ops"
               :key="i"
             >
-              {{ item }}
+              <template v-if="typeof item === 'object'">
+                <Tag
+                  :color="
+                    item.action === 'plant' || item.type === 'plant'
+                      ? 'orange'
+                      : 'cyan'
+                  "
+                  size="small"
+                >
+                  {{
+                    item.action === "plant" || item.type === "plant"
+                      ? "埋设"
+                      : "回收"
+                  }}
+                </Tag>
+                {{ item.content }}
+                <span
+                  v-if="item.recycle_chapter || item.callback_chapter"
+                  style="color: #999; font-size: 12px"
+                >
+                  (第{{ item.recycle_chapter || item.callback_chapter }}章收)
+                </span>
+              </template>
+              <template v-else>
+                {{ item }}
+              </template>
             </li>
           </ul>
         </div>

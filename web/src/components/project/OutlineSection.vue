@@ -46,7 +46,13 @@ const emit = defineEmits<{
 
 const outlineColumns = [
   { title: "序号", key: "index", width: 60 },
-  { title: "章节标题", dataIndex: "title", key: "title", ellipsis: true },
+  {
+    title: "章节标题",
+    dataIndex: "title",
+    key: "title",
+    width: 220,
+    ellipsis: true,
+  },
   {
     title: "核心事件",
     dataIndex: "core_event",
@@ -57,7 +63,7 @@ const outlineColumns = [
     title: "出场角色",
     dataIndex: "characters_present",
     key: "characters_present",
-    width: 120,
+    width: 180,
   },
   { title: "操作", key: "action", width: 140 },
 ];
