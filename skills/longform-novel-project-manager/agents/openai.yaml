@@ -1,0 +1,5 @@
+interface:
+  display_name: 长篇小说项目总管
+  short_description: 管理长篇小说项目状态、方法论检查、GitHub 文件流程、章节续写与修订交接。
+  icon: book-open
+  accent_color: '#7C3AED'
