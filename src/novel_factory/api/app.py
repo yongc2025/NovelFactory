@@ -1301,14 +1301,24 @@ def _normalize_review(review: dict) -> dict:
     issues = []
     for issue in review.get("issues", []):
         severity = issue.get("severity", "warning")
-        if severity == "error":
+        # 统一映射到前端需要的严重程度标签
+        if severity in ["error", "critical"]:
             severity = "critical"
+        
+        # 尝试从 location 中提取章节号
+        loc = issue.get("location", "")
+        chapter_match = 0
+        import re
+        m = re.search(r"第(\d+)章", loc)
+        if m:
+            chapter_match = int(m.group(1))
+
         issues.append({
-            "chapter_number": 0,
+            "chapter_number": chapter_match or issue.get("chapter_num", issue.get("chapter_number", 0)),
             "severity": severity,
-            "category": issue.get("type", ""),
-            "description": issue.get("detail", ""),
-            "suggestion": "",
+            "category": issue.get("type", issue.get("category", "逻辑")),
+            "description": issue.get("detail", issue.get("description", "")),
+            "suggestion": issue.get("suggestion", issue.get("location", "")), # 将位置信息放入建议栏如果没有建议
         })
 
     return {
@@ -1318,8 +1328,9 @@ def _normalize_review(review: dict) -> dict:
         "character_score": dim_score("dialogue"),
         "writing_score": dim_score("readability"),
         "issues": issues,
-        "summary": "、".join(quality.get("highlights", [])),
+        "summary": "、".join(quality.get("highlights", [])) if quality.get("highlights") else review.get("summary", "审校完成，暂无特别亮点说明。"),
         "suggestions": quality.get("improvements", []),
+        "highlights": quality.get("highlights", []),
     }
 
 

@@ -5,45 +5,70 @@ import {
   Tag,
   Space,
   Button,
+  Table,
   Empty,
-  Row,
-  Col,
-  Badge,
-  Progress,
+  message,
 } from "ant-design-vue";
 import {
-  PictureOutlined,
+  BlockOutlined,
   BulbOutlined,
-  EditOutlined,
-  EyeOutlined,
+  SyncOutlined,
 } from "@ant-design/icons-vue";
 import StageConfirm from "@/components/common/StageConfirm.vue";
-import type { Scene } from "@/types";
+import type { OutlineChapter } from "@/types";
 
 const props = defineProps<{
   projectId: string;
-  scenes: Scene[];
+  outlineChapters: OutlineChapter[];
+  outlinePagedChapters: OutlineChapter[];
+  outlinePage: number;
+  outlinePageSize: number;
   globalLoading: boolean;
   taskLoading: boolean;
   stageActionLoading: boolean;
   shouldShowStageConfirm: boolean;
   stageConfirmName: string;
+  getSceneCount: (chNum: number) => number;
 }>();
 
 const emit = defineEmits<{
+  (e: "update:outlinePage", val: number): void;
   (e: "generate"): void;
-  (e: "openDetail", scene: Scene): void;
+  (e: "openDetail", chapter: any): void;
   (e: "confirm", action: any): void;
 }>();
+
+const sceneColumns = [
+  { title: "序号", key: "index", width: 60 },
+  {
+    title: "章节标题",
+    dataIndex: "title",
+    key: "title",
+    width: 220,
+    ellipsis: true,
+  },
+  {
+    title: "核心事件",
+    dataIndex: "core_event",
+    key: "core_event",
+    ellipsis: true,
+  },
+  {
+    title: "场景数",
+    key: "scene_count",
+    width: 100,
+  },
+  { title: "操作", key: "action", width: 120 },
+];
 </script>
 
 <template>
   <div class="stage-container">
     <div class="stage-top-bar">
-      <span class="stage-top-title"><PictureOutlined /> 场景细化</span>
+      <span class="stage-top-title"><BlockOutlined /> 场景细纲</span>
       <Space>
         <Button
-          v-if="shouldShowStageConfirm && scenes.length > 0"
+          v-if="shouldShowStageConfirm && outlineChapters.length > 0"
           class="stage-action-button btn-adopt"
           :loading="stageActionLoading"
           @click="emit('confirm', 'approve')"
@@ -57,53 +82,82 @@ const emit = defineEmits<{
           :disabled="taskLoading"
           @click="emit('generate')"
         >
-          <BulbOutlined /> AI细化场景
+          <SyncOutlined /> AI生成全书场景
         </Button>
       </Space>
     </div>
 
     <div class="stage-content">
-      <div v-if="scenes.length === 0" class="empty-framework">
-        <Empty description="暂无场景。请先生成或点击上方按钮进行场景细化。" />
+      <div v-if="outlineChapters.length === 0" class="empty-framework">
+        <Empty description="请先生成大纲，再进行场景细化。" />
       </div>
 
-      <Row v-else :gutter="[16, 16]">
-        <Col
-          v-for="scene in scenes"
-          :key="scene.scene_id"
-          :xs="24"
-          :sm="12"
-          :md="8"
+      <template v-else>
+        <Table
+          :columns="sceneColumns"
+          :data-source="outlinePagedChapters"
+          :pagination="false"
+          size="small"
+          row-key="chapter_num"
         >
-          <Card hoverable class="scene-card" @click="emit('openDetail', scene)">
-            <template #title>
-              <div class="scene-card-header">
-                <span class="scene-title">{{ scene.title }}</span>
-                <Badge
-                  :status="
-                    scene.status === 'completed' ? 'success' : 'processing'
-                  "
-                  :text="scene.status === 'completed' ? '已完成' : '待处理'"
-                />
-              </div>
+          <template #bodyCell="{ record, index, column }">
+            <template v-if="column.key === 'index'">
+              {{ (outlinePage - 1) * outlinePageSize + index + 1 }}
             </template>
-            <div class="scene-body">
-              <div class="scene-desc">{{ scene.description }}</div>
-              <div class="scene-meta">
-                <Tag v-if="scene.location">{{ scene.location }}</Tag>
-                <Tag v-if="scene.time_of_day">{{ scene.time_of_day }}</Tag>
-              </div>
-            </div>
-            <template #actions>
-              <EditOutlined key="edit" />
-              <EyeOutlined key="view" />
+            <template v-else-if="column.key === 'title'">
+              {{ record.title }}
             </template>
-          </Card>
-        </Col>
-      </Row>
+            <template v-else-if="column.key === 'core_event'">
+              {{
+                record.core_event
+                  ? record.core_event.slice(0, 60) +
+                    (record.core_event.length > 60 ? "..." : "")
+                  : "-"
+              }}
+            </template>
+            <template v-else-if="column.key === 'scene_count'">
+              <Tag color="blue">{{ getSceneCount(record.chapter_num) }}</Tag>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <Space>
+                <Button
+                  type="link"
+                  size="small"
+                  @click="emit('openDetail', record)"
+                  >场景详情</Button
+                >
+              </Space>
+            </template>
+          </template>
+        </Table>
+
+        <div style="text-align: center; margin-top: 16px">
+          <Space>
+            <Button
+              size="small"
+              :disabled="outlinePage <= 1"
+              @click="emit('update:outlinePage', outlinePage - 1)"
+              >上一页</Button
+            >
+            <span
+              >第 {{ outlinePage }} /
+              {{ Math.ceil(outlineChapters.length / outlinePageSize) }} 页</span
+            >
+            <Button
+              size="small"
+              :disabled="
+                outlinePage >=
+                Math.ceil(outlineChapters.length / outlinePageSize)
+              "
+              @click="emit('update:outlinePage', outlinePage + 1)"
+              >下一页</Button
+            >
+          </Space>
+        </div>
+      </template>
 
       <StageConfirm
-        v-if="shouldShowStageConfirm && scenes.length > 0"
+        v-if="shouldShowStageConfirm && outlineChapters.length > 0"
         class="stage-action-card"
         :stage-name="stageConfirmName"
         :loading="stageActionLoading"
@@ -120,30 +174,5 @@ const emit = defineEmits<{
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-.scene-card {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-.scene-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.scene-title {
-  font-weight: bold;
-}
-.scene-body {
-  flex: 1;
-}
-.scene-desc {
-  color: rgba(0, 0, 0, 0.45);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 8px;
-  font-size: 13px;
 }
 </style>

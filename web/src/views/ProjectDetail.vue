@@ -17,6 +17,7 @@ import {
   InputNumber,
   Empty,
   Collapse,
+  Drawer,
   message,
 } from "ant-design-vue";
 import {
@@ -216,9 +217,13 @@ const outlineColumns = [
   { title: "操作", key: "action", width: 140 },
 ];
 
-function openOutlineDetail(chapter: any) {
+async function openOutlineDetail(chapter: any) {
   outlineDrawerChapter.value = chapter;
   outlineDrawerVisible.value = true;
+  // 如果没有缓存场景数据，则尝试加载
+  if (chapter.chapter_num && !sceneCache.value[chapter.chapter_num]) {
+    await loadSceneData(chapter.chapter_num);
+  }
 }
 
 function closeOutlineDetail() {
@@ -877,70 +882,22 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null);
 
             <!-- 场景细纲 -->
             <template v-if="activeTab === 'scene'">
-              <!-- 顶部操作栏 -->
-              <div class="stage-top-bar">
-                <span class="stage-top-title"><BlockOutlined /> 场景细纲</span>
-                <Space>
-                  <Button
-                    class="stage-action-button btn-generate"
-                    type="primary"
-                    :loading="globalLoading"
-                    :disabled="taskLoading"
-                    @click="handleRunStage('scene')"
-                  >
-                    <SyncOutlined /> AI生成
-                  </Button>
-                </Space>
-              </div>
-              <!-- 空状态 -->
-              <div
-                v-if="!store.outline || outlineChapters.length === 0"
-                class="empty-framework"
-              >
-                <Empty description="请先生成大纲" />
-              </div>
-              <!-- 场景列表 -->
-              <template v-else>
-                <Collapse accordion @change="onSceneChapterChange">
-                  <Collapse.Panel
-                    v-for="ch in outlineChapters"
-                    :key="String(ch.chapter_number)"
-                    :header="`第${ch.chapter_number}章 ${ch.title}`"
-                  >
-                    <div
-                      v-if="
-                        getSceneData(ch.chapter_number) &&
-                        getSceneData(ch.chapter_number).length
-                      "
-                    >
-                      <div
-                        v-for="(scene, si) in getSceneData(ch.chapter_number)"
-                        :key="si"
-                        class="scene-card"
-                      >
-                        <p>
-                          <strong>场景 {{ si + 1 }}：</strong
-                          >{{ scene.location || "-" }}
-                        </p>
-                        <p v-if="scene.atmosphere">
-                          <strong>氛围：</strong>{{ scene.atmosphere }}
-                        </p>
-                        <p v-if="scene.conflict">
-                          <strong>冲突：</strong>{{ scene.conflict }}
-                        </p>
-                        <p v-if="scene.turning_point">
-                          <strong>转折：</strong>{{ scene.turning_point }}
-                        </p>
-                        <p v-if="scene.emotion_start">
-                          <strong>情绪：</strong>{{ scene.emotion_start }} →
-                          {{ scene.emotion_end }}
-                        </p>
-                      </div>
-                    </div>
-                    <Empty v-else description="暂无场景细纲" />
-                  </Collapse.Panel>
-                </Collapse>
-              </template>
+              <SceneSection
+                v-model:outline-page="outlinePage"
+                :project-id="projectId"
+                :outline-chapters="outlineChapters"
+                :outline-paged-chapters="outlinePagedChapters"
+                :outline-page-size="outlinePageSize"
+                :global-loading="globalLoading"
+                :task-loading="taskLoading"
+                :stage-action-loading="stageActionLoading"
+                :should-show-stage-confirm="shouldShowStageConfirm"
+                :stage-confirm-name="stageConfirmName"
+                :get-scene-count="(chNum) => (sceneCache[chNum] || []).length"
+                @open-detail="openOutlineDetail"
+                @generate="handleRunStage('scene')"
+                @confirm="handleStageConfirm"
+              />
             </template>
 
             <!-- 书籍元数据 -->
@@ -1106,101 +1063,165 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null);
       </div>
     </div>
 
-    <!-- 大纲章节详情弹窗 -->
-    <Modal
+    <!-- 章节详情抽屉 (包含大纲和场景交互) -->
+    <Drawer
       v-model:open="outlineDrawerVisible"
       :title="
         outlineDrawerChapter
           ? `第 ${outlineDrawerChapter.chapter_number} 章：${outlineDrawerChapter.title}`
           : '章节详情'
       "
-      width="500px"
-      :footer="null"
-      :mask-closable="true"
-      @cancel="closeOutlineDetail"
+      width="650"
+      placement="right"
+      @close="closeOutlineDetail"
     >
-      <div v-if="outlineDrawerChapter">
-        <p>
-          <strong>核心事件：</strong
-          >{{ outlineDrawerChapter.core_event || "-" }}
-        </p>
-        <p>
-          <strong>出场角色：</strong
-          >{{
-            Array.isArray(outlineDrawerChapter.characters_present)
-              ? outlineDrawerChapter.characters_present.join("、")
-              : outlineDrawerChapter.characters_present || "-"
-          }}
-        </p>
-        <p>
-          <strong>情绪定位：</strong
-          >{{ outlineDrawerChapter.emotion_position || "-" }}
-        </p>
-        <p v-if="outlineDrawerChapter.emotion_arc">
-          <strong>情绪弧线：</strong>{{ outlineDrawerChapter.emotion_arc }}
-        </p>
-        <p><strong>钩子：</strong>{{ outlineDrawerChapter.hook || "-" }}</p>
+      <div v-if="outlineDrawerChapter" class="drawer-detail-content">
+        <!-- 1. 大纲核心信息 -->
+        <div class="section-title"><FileTextOutlined /> 大纲设定</div>
+        <Card size="small" class="detail-card">
+          <p>
+            <strong>核心事件：</strong>
+            <Text type="secondary">{{
+              outlineDrawerChapter.core_event || "-"
+            }}</Text>
+          </p>
+          <p>
+            <strong>出场角色：</strong>
+            <Space
+              v-if="Array.isArray(outlineDrawerChapter.characters_present)"
+            >
+              <Tag
+                v-for="c in outlineDrawerChapter.characters_present"
+                :key="c"
+                color="blue"
+                >{{ c }}</Tag
+              >
+            </Space>
+            <Text v-else type="secondary">{{
+              outlineDrawerChapter.characters_present || "-"
+            }}</Text>
+          </p>
+          <div style="display: flex; gap: 24px">
+            <p>
+              <strong>情绪定位：</strong
+              ><Tag color="orange">{{
+                outlineDrawerChapter.emotion_position || "-"
+              }}</Tag>
+            </p>
+            <p v-if="outlineDrawerChapter.conflict_level">
+              <strong>冲突等级：</strong
+              ><Tag color="red">L{{ outlineDrawerChapter.conflict_level }}</Tag>
+            </p>
+          </div>
+          <p>
+            <strong>章末钩子：</strong
+            ><Text type="warning">{{ outlineDrawerChapter.hook || "-" }}</Text>
+          </p>
+        </Card>
+
+        <!-- 2. 伏笔与情节 -->
         <div
           v-if="
-            outlineDrawerChapter.foreshadow_ops &&
-            outlineDrawerChapter.foreshadow_ops.length
+            outlineDrawerChapter.foreshadow_ops?.length ||
+            outlineDrawerChapter.plot_lines_progress
           "
-          style="margin-top: 12px"
+          style="margin-top: 20px"
         >
-          <p><strong>伏笔操作：</strong></p>
-          <ul>
-            <li
-              v-for="(item, i) in outlineDrawerChapter.foreshadow_ops"
-              :key="i"
-            >
-              <template v-if="typeof item === 'object'">
+          <div class="section-title"><BulbOutlined /> 伏笔与情节线</div>
+          <Card size="small" class="detail-card">
+            <template v-if="outlineDrawerChapter.foreshadow_ops?.length">
+              <div style="margin-bottom: 8px"><strong>伏笔操作：</strong></div>
+              <ul style="padding-left: 20px">
+                <li
+                  v-for="(item, i) in outlineDrawerChapter.foreshadow_ops"
+                  :key="i"
+                >
+                  <template v-if="typeof item === 'object'">
+                    <Tag
+                      :color="
+                        item.action === 'plant' || item.type === 'plant'
+                          ? 'orange'
+                          : 'cyan'
+                      "
+                      size="small"
+                    >
+                      {{
+                        item.action === "plant" || item.type === "plant"
+                          ? "埋设"
+                          : "回收"
+                      }}
+                    </Tag>
+                    {{ item.content }}
+                  </template>
+                  <template v-else>{{ item }}</template>
+                </li>
+              </ul>
+            </template>
+            <template v-if="outlineDrawerChapter.plot_lines_progress">
+              <div style="margin-top: 12px; margin-bottom: 8px">
+                <strong>情节推进：</strong>
+              </div>
+              <Space wrap>
                 <Tag
-                  :color="
-                    item.action === 'plant' || item.type === 'plant'
-                      ? 'orange'
-                      : 'cyan'
-                  "
-                  size="small"
+                  v-for="(val, key) in outlineDrawerChapter.plot_lines_progress"
+                  :key="key"
                 >
-                  {{
-                    item.action === "plant" || item.type === "plant"
-                      ? "埋设"
-                      : "回收"
-                  }}
+                  {{ key }}: {{ val }}
                 </Tag>
-                {{ item.content }}
-                <span
-                  v-if="item.recycle_chapter || item.callback_chapter"
-                  style="color: #999; font-size: 12px"
-                >
-                  (第{{ item.recycle_chapter || item.callback_chapter }}章收)
-                </span>
-              </template>
-              <template v-else>
-                {{ item }}
-              </template>
-            </li>
-          </ul>
+              </Space>
+            </template>
+          </Card>
         </div>
-        <div
-          v-if="
-            outlineDrawerChapter.plot_lines_progress &&
-            Object.keys(outlineDrawerChapter.plot_lines_progress).length
-          "
-          style="margin-top: 12px"
-        >
-          <p><strong>情节线推进：</strong></p>
-          <ul>
-            <li
-              v-for="(val, key) in outlineDrawerChapter.plot_lines_progress"
-              :key="key"
+
+        <!-- 3. 场景细纲 (重头戏) -->
+        <div style="margin-top: 20px">
+          <div class="section-title"><BlockOutlined /> 场景细纲</div>
+          <div
+            v-if="sceneCache?.[outlineDrawerChapter.chapter_num]?.length"
+            class="scene-list-vertical"
+          >
+            <Card
+              v-for="(scene, si) in sceneCache[
+                outlineDrawerChapter.chapter_num
+              ]"
+              :key="si"
+              size="small"
+              class="scene-item-card"
+              style="margin-bottom: 12px"
             >
-              {{ key }}：{{ val }}
-            </li>
-          </ul>
+              <template #title>
+                <span class="scene-number">场景 {{ si + 1 }}</span>
+                <Tag v-if="scene.location" style="margin-left: 8px">{{
+                  scene.location
+                }}</Tag>
+              </template>
+              <p v-if="scene.atmosphere">
+                <strong>氛围：</strong>{{ scene.atmosphere }}
+              </p>
+              <p><strong>核心冲突：</strong>{{ scene.conflict || "-" }}</p>
+              <p><strong>转折点：</strong>{{ scene.turning_point || "-" }}</p>
+              <p><strong>任务行动：</strong>{{ scene.action || "-" }}</p>
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-top: 8px;
+                "
+              >
+                <span
+                  v-if="scene.emotion_start"
+                  style="font-size: 12px; color: #999"
+                >
+                  情绪预期：{{ scene.emotion_start }} → {{ scene.emotion_end }}
+                </span>
+              </div>
+            </Card>
+          </div>
+          <Empty v-else description="暂无细纲内容" />
         </div>
       </div>
-    </Modal>
+    </Drawer>
 
     <!-- 大纲分批生成弹窗 -->
     <Modal
@@ -1277,6 +1298,44 @@ const outlineEditorRef = ref<InstanceType<typeof OutlineEditor> | null>(null);
 .right-panel {
   width: 280px;
   flex-shrink: 0;
+}
+
+/* Drawer Detail Content */
+.drawer-detail-content {
+  padding: 0 4px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1a1a1a;
+}
+
+.detail-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.detail-card p {
+  margin-bottom: 8px;
+}
+
+.detail-card p:last-child {
+  margin-bottom: 0;
+}
+
+.scene-number {
+  font-weight: bold;
+  color: #1890ff;
+}
+
+.scene-item-card {
+  border-left: 4px solid #1890ff;
 }
 
 .panel-card {

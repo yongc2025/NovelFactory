@@ -27,22 +27,26 @@ const scoreColor = (score: number) => {
 }
 
 const issueColumns = [
-  { title: '章节', dataIndex: 'chapter_number', width: 80 },
+  { title: '章节/位置', dataIndex: 'chapter_number', width: 100, customRender: ({ text, record }: any) => {
+      if (text > 0) return `第 ${text} 章`
+      // 如果没有章节号，显示建议栏中的位置信息（我们在后端把 location 映射到了 suggestion）
+      return record.suggestion || '-'
+    }
+  },
   {
     title: '严重度',
     dataIndex: 'severity',
     width: 100,
     customRender: ({ text }: { text: string }) =>
-      h(Tag, { color: severityColors[text] }, () => severityLabels[text]),
+      h(Tag, { color: severityColors[text] || 'blue' }, () => severityLabels[text] || '提示'),
   },
   { title: '分类', dataIndex: 'category', width: 120 },
   { title: '问题描述', dataIndex: 'description', ellipsis: true },
-  { title: '建议', dataIndex: 'suggestion', ellipsis: true },
 ]
 
-// 建议列表渲染函数
-function renderSuggestionItem(opt: { item: string; index: number }) {
-  return h(List.Item, null, () => `${opt.index + 1}. ${opt.item}`)
+// 建议列表渲染函数 - 修正参数签名为 (item, index)
+function renderSuggestionItem(item: string, index: number) {
+  return h(List.Item, null, () => `${index + 1}. ${item}`)
 }
 </script>
 
@@ -58,8 +62,8 @@ function renderSuggestionItem(opt: { item: string; index: number }) {
           <div class="score-main">
             <Progress
               type="dashboard"
-              :percent="report.overall_score"
-              :stroke-color="scoreColor(report.overall_score)"
+              :percent="report.overall_score || 0"
+              :stroke-color="scoreColor(report.overall_score || 0)"
               :size="140"
             />
             <div class="score-label">综合评分</div>
@@ -67,43 +71,48 @@ function renderSuggestionItem(opt: { item: string; index: number }) {
           <div class="score-details">
             <div class="score-item">
               <span class="item-label">一致性</span>
-              <Progress :percent="report.consistency_score" :stroke-color="scoreColor(report.consistency_score)" size="small" />
+              <Progress :percent="report.consistency_score || 0" :stroke-color="scoreColor(report.consistency_score || 0)" size="small" />
             </div>
             <div class="score-item">
               <span class="item-label">剧情</span>
-              <Progress :percent="report.plot_score" :stroke-color="scoreColor(report.plot_score)" size="small" />
+              <Progress :percent="report.plot_score || 0" :stroke-color="scoreColor(report.plot_score || 0)" size="small" />
             </div>
             <div class="score-item">
               <span class="item-label">角色</span>
-              <Progress :percent="report.character_score" :stroke-color="scoreColor(report.character_score)" size="small" />
+              <Progress :percent="report.character_score || 0" :stroke-color="scoreColor(report.character_score || 0)" size="small" />
             </div>
             <div class="score-item">
               <span class="item-label">文笔</span>
-              <Progress :percent="report.writing_score" :stroke-color="scoreColor(report.writing_score)" size="small" />
+              <Progress :percent="report.writing_score || 0" :stroke-color="scoreColor(report.writing_score || 0)" size="small" />
             </div>
           </div>
         </div>
       </Card>
 
-      <Card title="📝 审校总结" class="report-card" style="margin-top: 16px">
-        <p class="report-summary">{{ report.summary }}</p>
-      </Card>
+      <div class="two-columns" style="margin-top: 16px">
+        <Card title="🌟 作品亮点" class="report-card flex-1" v-if="report.highlights && report.highlights.length">
+          <List
+            :data-source="report.highlights"
+            size="small"
+            :render-item="renderSuggestionItem"
+          />
+        </Card>
+        <Card title="💡 改进建议" class="report-card flex-1" v-if="report.suggestions && report.suggestions.length">
+          <List
+            :data-source="report.suggestions"
+            size="small"
+            :render-item="renderSuggestionItem"
+          />
+        </Card>
+      </div>
 
-      <Card title="⚠️ 发现问题" class="report-card" style="margin-top: 16px" v-if="report.issues.length">
+      <Card title="⚠️ 发现问题" class="report-card" style="margin-top: 16px" v-if="report.issues && report.issues.length">
         <Table
           :columns="issueColumns"
           :data-source="report.issues"
           :pagination="{ pageSize: 10 }"
           size="small"
           :row-key="(_: any, i: any) => i"
-        />
-      </Card>
-
-      <Card title="💡 改进建议" class="report-card" style="margin-top: 16px" v-if="report.suggestions.length">
-        <List
-          :data-source="report.suggestions"
-          size="small"
-          :render-item="renderSuggestionItem"
         />
       </Card>
     </template>
@@ -117,6 +126,15 @@ function renderSuggestionItem(opt: { item: string; index: number }) {
 
 .report-card {
   margin-bottom: 0;
+}
+
+.two-columns {
+  display: flex;
+  gap: 16px;
+}
+
+.flex-1 {
+  flex: 1;
 }
 
 .score-overview {

@@ -65,6 +65,12 @@ const outlineColumns = [
     key: "characters_present",
     width: 180,
   },
+  {
+    title: "情绪定位",
+    dataIndex: "emotion_position",
+    key: "emotion_position",
+    width: 120,
+  },
   { title: "操作", key: "action", width: 140 },
 ];
 </script>
@@ -178,6 +184,12 @@ const outlineColumns = [
                   >{{ c }}</Tag
                 >
               </template>
+              <span v-else>{{ record.characters_present || "-" }}</span>
+            </template>
+            <template v-else-if="column.key === 'emotion_position'">
+              <Tag v-if="record.emotion_position" color="orange" size="small">{{
+                record.emotion_position
+              }}</Tag>
               <span v-else>-</span>
             </template>
             <template v-else-if="column.key === 'action'">

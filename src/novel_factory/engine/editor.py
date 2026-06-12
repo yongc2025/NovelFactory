@@ -51,47 +51,45 @@ async def review_chapter(
 
     response = await complete(messages=messages, role="editor", temperature=0.1, max_tokens=4096)
 
-    return _parse_review(response)
-
-        {"role": "user", "content": quality_prompt},
-    ]
-
-    quality_response = await complete(messages=quality_messages, role="editor_quality", temperature=0.3, max_tokens=2048)
-
-    # 合并结果
-    return _merge_review(rules_response, quality_response, len(draft))
+    # 解析并返回结果
+    return _parse_review_json(response, len(draft))
 
 
-def _merge_review(rules_response: str, quality_response: str, word_count: int) -> dict:
-    """合并规则检查和质量评估结果"""
+def _parse_review_json(response: str, word_count: int) -> dict:
+    """解析 LLM 返回的审校 JSON"""
     review = {
         "total_words": word_count,
         "checks": {},
         "issues": [],
         "score": None,
+        "quality": {},
     }
 
-    # 解析规则检查
     try:
-        json_str = rules_response
+        json_str = response
         if "```json" in json_str:
             json_str = json_str.split("```json")[1].split("```")[0]
-        rules = json.loads(json_str.strip())
-        review["checks"]["character_consistency"] = "通过" if rules.get("pass", False) else "发现问题"
-        for issue in rules.get("issues", []):
-            review["issues"].append(issue)
-    except (json.JSONDecodeError, KeyError):
-        review["checks"]["character_consistency"] = "待检查"
+        data = json.loads(json_str.strip())
 
-    # 解析质量评估
-    try:
-        json_str = quality_response
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0]
-        quality = json.loads(json_str.strip())
-        review["score"] = quality.get("overall_score")
-        review["quality"] = quality
-    except (json.JSONDecodeError, KeyError):
-        review["quality"] = {"note": "质量评估解析失败"}
+        # 1. 解析规则检查 (rules_check)
+        rc = data.get("rules_check", {})
+        review["checks"]["pass"] = rc.get("pass", False)
+        review["issues"] = rc.get("issues", [])
+
+        # 2. 解析质量评估 (quality_review)
+        qr = data.get("quality_review", {})
+        review["score"] = qr.get("overall_score")
+        review["quality"] = qr
+        
+        # 兼容性处理：如果 issues 在根级或质量评估级
+        if not review["issues"] and data.get("issues"):
+            review["issues"] = data.get("issues")
+        elif not review["issues"] and qr.get("issues"):
+            review["issues"] = qr.get("issues")
+
+    except Exception as e:
+        logger.error("审校 JSON 解析失败: %s", e)
+        review["error"] = "解析失败"
+        review["raw_response"] = response[:500]
 
     return review
